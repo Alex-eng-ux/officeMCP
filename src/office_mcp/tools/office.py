@@ -4,6 +4,7 @@ from mcp.server.fastmcp import FastMCP
 
 from office_mcp.core.errors import OfficeMCPError
 from office_mcp.core.office_manager import office_manager
+from office_mcp.core.path_guard import validate_path
 
 
 def register_office_tools(mcp: FastMCP) -> None:
@@ -17,6 +18,21 @@ def register_office_tools(mcp: FastMCP) -> None:
         """
         try:
             return office_manager.status()
+        except OfficeMCPError as e:
+            return {"error": str(e)}
+
+    @mcp.tool()
+    def office_activate(app_type: str, file_path: str = "") -> dict:
+        """激活指定应用/文件，后续操作自动锁定到该文件.
+
+        Args:
+            app_type: 应用类型 (word/excel/ppt)
+            file_path: 可选，要激活的文件路径
+        """
+        try:
+            path = validate_path(file_path) if file_path else None
+            result = office_manager.activate_app(app_type, path)
+            return result
         except OfficeMCPError as e:
             return {"error": str(e)}
 

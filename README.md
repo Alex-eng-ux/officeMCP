@@ -1,36 +1,35 @@
 # Office MCP Server
 
-通过 MCP (Model Context Protocol) 调用本地 Microsoft Office (Word / Excel / PowerPoint) 进行文档创建、编辑和导出。
+![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![Tools](https://img.shields.io/badge/tools-366-success)
+![PPT](https://img.shields.io/badge/PPT-164-blueviolet)
+![Excel](https://img.shields.io/badge/Excel-107-green)
+![Word](https://img.shields.io/badge/Word-92-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## 核心特性
+**366 tools across Word, Excel, and PowerPoint** — Real-time Office control through COM automation. An MCP (Model Context Protocol) server that gives AI agents full control over local Microsoft Office applications.
 
-- **本地 Office COM 自动化** — 直接调用用户安装的 Microsoft Office，非模拟生成
-- **任务型工具设计** — `apply_operations` 批量结构化操作，适合 AI 调用
-- **安全路径控制** — 可配置允许操作的目录，禁止访问系统路径
-- **进程安全** — 优先管理本 MCP 启动的 Office 实例，避免误杀用户文档
+Unlike file-based libraries, this server interacts directly with running Office applications — changes appear instantly.
 
-## 环境要求
-
-- Windows 操作系统
-- Python 3.10+
-- Microsoft Office (Word, Excel, PowerPoint)
-
-## 安装
+## Quick Start
 
 ```bash
+# Install via pip
 pip install office-mcp
+
+# Or via uv (recommended)
+uvx office-mcp
 ```
 
-## MCP 配置
-
-在 Claude Desktop、Cursor 或其他 MCP 客户端中添加：
+### Claude Desktop / Cursor / VS Code
 
 ```json
 {
   "mcpServers": {
     "office": {
-      "command": "python",
-      "args": ["-m", "office_mcp.server"],
+      "command": "uvx",
+      "args": ["office-mcp"],
       "env": {
         "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop"
       }
@@ -39,89 +38,221 @@ pip install office-mcp
 }
 ```
 
-### 环境变量
+## Core Features
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `OFFICE_MCP_ALLOWED_DIRS` | 允许操作的目录，分号分隔 | `%USERPROFILE%` |
-| `OFFICE_MCP_DEFAULT_OVERWRITE` | 默认是否允许覆盖 | `false` |
-| `OFFICE_MCP_BACKUP_BEFORE_EDIT` | 编辑前是否自动备份 | `true` |
-| `OFFICE_MCP_VISIBLE` | Office 是否可见（调试） | `false` |
+- **366 tools across 3 apps** — Word (92), Excel (107), PowerPoint (164), utilities (3)
+- **Real-time COM automation** — Directly manipulates running Office; changes appear instantly
+- **Batch operations** — `apply_operations` for structured multi-step document creation
+- **Security-first** — Path guard (whitelist + system directory block), SSRF protection, process ancestry tracking
+- **Theme color awareness** — Use `accent1`, `accent2`, etc. instead of hardcoded RGB
+- **Google Material Symbols** — Search 2,500+ icons by keyword and insert as SVG with theme colors
 
-## 可用工具
+## Tool Categories (vs ppt-mcp)
 
-### 通用工具
+| Category | Tools | ppt-mcp | Office MCP | Status |
+|---|---|---|---|---|
+| App | 5 | ✅ | ✅ | ✅ |
+| Presentation | 8 | ✅ | ✅ | ✅ |
+| Slides | 9 | ✅ | ✅ | ✅ |
+| Shapes | 10 | ✅ | ✅ | ✅ |
+| Text | 10 | ✅ | ✅ | ✅ |
+| Placeholders | 6 | ✅ | ✅ | ✅ |
+| Formatting | 3 | ✅ | ✅ | ✅ |
+| Tables | 13 | ✅ | ✅ | ✅ |
+| Export | 4 | ✅ | ✅ | ✅ |
+| Slideshow | 6 | ✅ | ✅ | ✅ |
+| Charts | 7 | ✅ | ✅ | ✅ |
+| Animation | 6 | ✅ | ✅ | ✅ |
+| Themes | 4 | ✅ | ✅ | ✅ |
+| Groups | 3 | ✅ | ✅ | ✅ |
+| Connectors | 2 | ✅ | ✅ | ✅ |
+| Hyperlinks | 3 | ✅ | ✅ | ✅ |
+| Sections | 3 | ✅ | ✅ | ✅ |
+| Properties | 2 | ✅ | ✅ | ✅ |
+| Media | 3 | ✅ | ✅ | ✅ |
+| SmartArt | 3 | ✅ | ✅ | ✅ |
+| Edit Operations | 6 | ✅ | ✅ | ✅ |
+| Layout | 7 | ✅ | ✅ | ✅ |
+| Effects | 3 | ✅ | ✅ | ✅ |
+| Comments | 3 | ✅ | ✅ | ✅ |
+| Advanced | 19 | ✅ | ✅ | ✅ |
+| Freeform | 7 | ✅ | ✅ | ✅ |
+| **Total PPT** | **164** | **155** | **✅ +9** |
+| Excel | **107** | ❌ | **✅** |
+| Word | **92** | ❌ | **✅** |
+| **Grand Total** | **366** | **155** | **✅ 2.36x** |
 
-- `office_status` — 查询 Office 应用状态
-- `office_cleanup` — 清理 Office 实例
+## Natural Language Examples
 
-### Word
+Just describe what you want in plain language:
 
-- `word_create_document` — 创建文档
-- `word_open_document` — 打开文档
-- `word_apply_operations` — 批量操作（段落、表格、替换、图片、分页等）
-- `word_export_pdf` — 导出 PDF
-- `word_close_document` — 关闭文档
+### "Create a 3-slide intro deck for a productivity app called Flowly."
 
-### Excel
+The server creates:
+1. Title slide with "Flowly" in large text
+2. Features slide with key capabilities (task management, calendar sync, team collaboration)
+3. Call-to-action slide with clean layout
 
-- `excel_create_workbook` — 创建工作簿
-- `excel_open_workbook` — 打开工作簿
-- `excel_apply_operations` — 批量操作（单元格、范围、公式、图表、格式等）
-- `excel_export_pdf` — 导出 PDF
-- `excel_close_workbook` — 关闭工作簿
-
-### PowerPoint
-
-- `ppt_create_presentation` — 创建演示文稿
-- `ppt_open_presentation` — 打开演示文稿
-- `ppt_apply_operations` — 批量操作（幻灯片、文本、图片、表格、布局等）
-- `ppt_export_pdf` — 导出 PDF
-- `ppt_close_presentation` — 关闭演示文稿
-
-## 使用示例
-
-### 创建 Word 文档
+### "Make a quarterly sales report in Excel with a chart."
 
 ```json
 {
-  "file_path": "C:\\Users\\Me\\Desktop\\report.docx",
+  "file_path": "sales_report.xlsx",
   "operations": [
-    {"type": "add_paragraph", "text": "季度报告", "style": "Heading 1", "alignment": "center"},
-    {"type": "add_paragraph", "text": "本季度业绩稳步增长...", "style": "Normal"},
-    {"type": "insert_table", "rows": 3, "columns": 2, "data": [["项目", "数值"], ["收入", "100万"], ["利润", "20万"]]},
+    {"type": "write_range", "sheet": "Sheet1", "start_cell": "A1", "data": [
+      ["Quarter", "Revenue", "Cost"],
+      ["Q1", 100000, 60000],
+      ["Q2", 120000, 72000],
+      ["Q3", 150000, 85000],
+      ["Q4", 180000, 95000]
+    ]},
+    {"type": "create_chart", "sheet": "Sheet1", "chart_type": "column", "data_range": "A1:C5", "title": "Annual Performance"},
+    {"type": "add_auto_filter", "sheet": "Sheet1", "range": "A1:C5"},
     {"type": "save"}
   ]
 }
 ```
 
-### 创建 Excel 工作簿
+### "Write a formal letter in Word with letterhead."
 
 ```json
 {
-  "file_path": "C:\\Users\\Me\\Desktop\\data.xlsx",
+  "file_path": "letter.docx",
   "operations": [
-    {"type": "write_range", "sheet": "Sheet1", "start_cell": "A1", "data": [["姓名", "年龄"], ["张三", 25], ["李四", 30]]},
-    {"type": "create_chart", "sheet": "Sheet1", "chart_type": "column", "data_range": "A1:B3", "title": "年龄分布"},
+    {"type": "add_paragraph", "text": "Acme Corporation", "style": "Heading 1", "alignment": "center"},
+    {"type": "add_paragraph", "text": "123 Business Ave, New York, NY 10001", "style": "Normal", "alignment": "center"},
+    {"type": "add_paragraph", "text": ""},
+    {"type": "add_paragraph", "text": "Dear Sir or Madam,", "style": "Normal"},
+    {"type": "add_paragraph", "text": "We are pleased to inform you...", "style": "Normal"},
     {"type": "save"}
   ]
 }
 ```
 
-### 创建 PowerPoint 演示文稿
+## Design Guide
 
-```json
-{
-  "file_path": "C:\\Users\\Me\\Desktop\\slides.pptx",
-  "operations": [
-    {"type": "add_slide", "layout": "title_content"},
-    {"type": "set_title", "slide_index": 1, "text": "项目汇报"},
-    {"type": "add_text", "slide_index": 1, "text": "项目进展顺利", "left": 100, "top": 200, "width": 400, "height": 100},
-    {"type": "save"}
-  ]
-}
+Keywords that elevate your presentations:
+
+| Aspect | Keywords | Effect |
+|---|---|---|
+| **Icons** | `add icons`, `icon for each point`, `use icons throughout` | Searches Google Material Symbols and places crisp SVG icons |
+| **Color scheme** | `dark navy`, `white background`, `monochrome`, `light gray` | Sets the overall color palette |
+| **Accent color** | `teal accent`, `blue accent`, `brand color #2563EB` | Applies highlight color to headings, icons, shapes |
+| **Style tone** | `modern minimal`, `bold and vibrant`, `clean and professional` | Signals visual personality |
+| **Deck type** | `pitch deck`, `investor presentation`, `workshop slides` | Guides layout and content density |
+| **Slide structure** | `Slides: title, problem, solution, features, CTA` | Defines narrative arc |
+| **Layout** | `card layout`, `two-column`, `centered`, `full-bleed background` | Content arrangement |
+| **Text density** | `minimal text`, `one message per slide`, `bullet points` | Text formatting |
+| **Backgrounds** | `gradient background`, `solid dark background` | Background treatment |
+| **Emphasis** | `highlight key numbers`, `bold headings`, `accent bar` | Visual hierarchy |
+
+## Safety & Security
+
+```
+┌──────────────────────────────────────────────┐
+│          3-Layer Security Defense            │
+├──────────────────────────────────────────────┤
+│ Layer 1: Path Guard (validate_path)          │
+│   • Absolute path required                   │
+│   • C:\Windows\ blocked                      │
+│   • Only OFFICE_MCP_ALLOWED_DIRS allowed     │
+├──────────────────────────────────────────────┤
+│ Layer 2: SSRF Protection (URL tools)         │
+│   • http/https only                          │
+│   • localhost/127.0.0.1 blocked              │
+│   • Private IPs resolved & rejected          │
+├──────────────────────────────────────────────┤
+│ Layer 3: Process Safety (cleanup)            │
+│   • COM parent-child detection (6-level)      │
+│   • Only kills MCP-spawned Office instances  │
+│   • Never touches user-manual Office windows │
+└──────────────────────────────────────────────┘
 ```
 
-## 许可证
+### Environment Variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `OFFICE_MCP_ALLOWED_DIRS` | Allowed directories (semicolon-separated) | `%USERPROFILE%` |
+| `OFFICE_MCP_DEFAULT_OVERWRITE` | Allow overwrite by default | `false` |
+| `OFFICE_MCP_BACKUP_BEFORE_EDIT` | Auto-backup before editing | `true` |
+| `OFFICE_MCP_VISIBLE` | Show Office windows (debug) | `false` |
+
+## Complete Tool Reference
+
+### Word (92)
+
+- `word_create_document` / `word_open_document` / `word_close_document` — Document lifecycle
+- `word_apply_operations` — Batch: paragraphs, tables, find/replace, images, page breaks, styles, headers/footers, TOC, bookmarks, hyperlinks, SmartArt, fields, mail merge, icons
+- `word_add_smartart` / `word_add_field` / `word_update_fields` — SmartArt and field operations
+- `word_mail_merge` / `word_mail_merge_enhanced` — Mail merge with data sources
+- `word_insert_icon` / `word_search_icons` — Google Material Symbols
+- `word_check_typography` / `word_export_pdf` — Quality check and export
+
+### Excel (107)
+
+- `excel_create_workbook` / `excel_open_workbook` / `excel_close_workbook` — Workbook lifecycle
+- `excel_apply_operations` — Batch: cells, ranges, formulas, charts, formatting, data validation, conditional formatting, named ranges, tables, filtering, protection, objects, view, calculation (7 categories)
+- `excel_create_pivot_table` / `excel_add_slicer` / `excel_add_subtotal` — Data analysis
+- `excel_define_name` / `excel_list_names` / `excel_set_array_formula` — Formula management
+- `excel_import_data` / `excel_export_data` — CSV import/export
+- `excel_check_typography` / `excel_export_pdf` — Quality check and export
+
+### PowerPoint (164)
+
+All 26 categories matched and exceeded:
+- **Charts (7)**: Add, set data, format, axis, series, change type, get data
+- **Slideshow (6)**: Start, stop, next, previous, goto, status
+- **Hyperlinks (3)**: Add, get, remove
+- **Connectors (2)**: Add, format
+- **Groups (3)**: Group, ungroup, get items
+- **Effects (3)**: Glow, reflection, soft edge
+- **Freeform (7)**: Build, get nodes, set/insert/delete nodes, editing type, segment type
+- **Comments (3)**: Add, list, delete
+- Plus: SmartArt, animations, transitions, gradients, themes, media (video/audio), master slides, SVG icons, typography check, compare/merge presentations
+
+## Testing
+
+```bash
+# Tool count verification
+python count_tools.py
+
+# COM integration tests (requires Windows + Office)
+python test_excel_supplement.py
+python test_word_advanced.py
+python test_ppt_advanced.py
+```
+
+## Architecture
+
+```
+┌──────────────┐     ┌──────────────────────────────────────┐
+│   MCP Client  │────▶│        Office MCP Server             │
+│ (Claude, etc) │     │                                      │
+└──────────────┘     │  tools/          operations/          │
+                     │  ├── word.py     ├── word_ops.py      │
+                     │  ├── excel.py    ├── excel_ops.py     │
+                     │  ├── office.py   └── ppt_ops.py       │
+                     │  └── powerpoint.py                     │
+                     │         ↕                              │
+                     │  core/                                │
+                     │  ├── office_manager.py  (COM lifecycle)│
+                     │  ├── path_guard.py      (security)    │
+                     │  └── errors.py          (exceptions)  │
+                     │         ↕                              │
+                     │  ┌────────────────────────────┐       │
+                     │  │  Windows COM Automation    │       │
+                     │  │  (Word/Excel/PowerPoint)   │       │
+                     │  └────────────────────────────┘       │
+                     └──────────────────────────────────────┘
+```
+
+## Requirements
+
+- Windows 10/11
+- Python 3.10+
+- Microsoft Office (2016+) — Word, Excel, PowerPoint
+
+## License
 
 MIT

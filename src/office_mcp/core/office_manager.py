@@ -2,7 +2,9 @@
 
 import datetime
 import logging
+import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,31 @@ from office_mcp.core.errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_descendant_of(pid: int, ancestor_pid: int, max_depth: int = 6) -> bool:
+    """判断 pid 是否是 ancestor_pid 的后代进程.
+
+    通过 psutil 查询父进程链, 最多向上追溯 max_depth 层, 避免无限循环.
+    """
+    try:
+        current = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return False
+    seen: set[int] = set()
+    for _ in range(max_depth):
+        if current.pid in seen:
+            return False
+        seen.add(current.pid)
+        if current.pid == ancestor_pid:
+            return True
+        try:
+            current = current.parent()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+        if current is None:
+            return False
+    return False
 
 # 常量
 WORD_PROGID = "Word.Application"
@@ -35,8 +62,29 @@ class OfficeManager:
         self._apps: dict[str, Any] = {}  # progid -> Application
         self._documents: dict[str, Any] = {}  # file_path -> Document/Workbook/Presentation
         self._doc_types: dict[str, str] = {}  # file_path -> app_type
+        self._active_file: Path | None = None
 
     # ---------- App 管理 ----------
+
+    # COM 可重试的错误码 (winerror.h)
+    _RETRYABLE_HRESULT = {
+        -2147418110,  # RPC_E_SERVERCALL_RETRYLATER
+        -2147417848,  # RPC_E_CALL_REJECTED
+        -2292178814,  # OLE_E_PROMPTSAVECANCELLED
+    }
+
+    def _retry_on_modal(self, func, *args, max_retries: int = 15, retry_interval: float = 1.0):
+        """COM 调用被模态对话框阻塞时自动重试 (使用 winerror HRESULT)."""
+        for attempt in range(max_retries):
+            try:
+                return func(*args)
+            except Exception as e:
+                hresult = getattr(e, 'hresult', None)
+                if hresult in self._RETRYABLE_HRESULT and attempt < max_retries - 1:
+                    time.sleep(retry_interval)
+                    continue
+                raise
+        raise Exception(f"COM 调用失败，已重试 {max_retries} 次")
 
     def _get_app(self, app_type: str) -> Any:
         """获取或创建 Office 应用实例."""
@@ -57,12 +105,15 @@ class OfficeManager:
         if not progid:
             raise COMOperationError(f"未知的应用类型: {app_type}")
 
-        try:
+        def _dispatch():
             app = win32com.client.Dispatch(progid)
             app.Visible = settings.visible
             self._apps[app_type] = app
             logger.info(f"已启动 {progid}")
             return app
+
+        try:
+            return self._retry_on_modal(_dispatch)
         except Exception as e:
             raise OfficeNotInstalledError() from e
 
@@ -103,7 +154,7 @@ class OfficeManager:
 
         self._backup_if_needed(file_path)
 
-        try:
+        def _open():
             if app_type == "word":
                 doc = app.Documents.Open(str(file_path))
             elif app_type == "excel":
@@ -112,13 +163,15 @@ class OfficeManager:
                 doc = app.Presentations.Open(str(file_path))
             else:
                 raise COMOperationError(f"不支持的应用类型: {app_type}")
+            self._documents[path_str] = doc
+            self._doc_types[path_str] = app_type
+            logger.info(f"已打开文档: {path_str}")
+            return doc
+
+        try:
+            return self._retry_on_modal(_open)
         except Exception as e:
             raise COMOperationError("打开文档", str(e)) from e
-
-        self._documents[path_str] = doc
-        self._doc_types[path_str] = app_type
-        logger.info(f"已打开文档: {path_str}")
-        return doc
 
     def create_document(self, file_path: Path, overwrite: bool = False) -> Any:
         """创建新文档."""
@@ -134,7 +187,7 @@ class OfficeManager:
         app_type = self._get_app_type_by_path(file_path)
         app = self._get_app(app_type)
 
-        try:
+        def _create():
             if app_type == "word":
                 doc = app.Documents.Add()
             elif app_type == "excel":
@@ -143,21 +196,50 @@ class OfficeManager:
                 doc = app.Presentations.Add()
             else:
                 raise COMOperationError(f"不支持的应用类型: {app_type}")
+            self._documents[path_str] = doc
+            self._doc_types[path_str] = app_type
+            logger.info(f"已创建文档: {path_str}")
+            return doc
+
+        try:
+            return self._retry_on_modal(_create)
         except Exception as e:
             raise COMOperationError("创建文档", str(e)) from e
 
-        self._documents[path_str] = doc
-        self._doc_types[path_str] = app_type
-        logger.info(f"已创建文档: {path_str}")
-        return doc
-
     def get_document(self, file_path: Path) -> Any:
         """获取已打开的文档."""
+        if self._active_file and str(self._active_file.resolve()) != str(file_path.resolve()):
+            raise DocumentNotOpenError(
+                f"文件未激活: {file_path}. "
+                f"当前激活的文件是 {self._active_file}. "
+                f"请先调用 activate_app 切换到目标文件."
+            )
         path_str = str(file_path)
         doc = self._documents.get(path_str)
         if doc is None:
             raise DocumentNotOpenError(path_str)
         return doc
+
+    def activate_app(self, app_type: str, file_path: Path | None = None) -> dict:
+        """激活指定应用/文档，后续操作自动锁定到该文件.
+
+        Args:
+            app_type: "word" / "excel" / "ppt"
+            file_path: 可选，指定要激活的文件路径
+        """
+        if file_path:
+            path_str = str(file_path)
+            if path_str not in self._documents:
+                self.open_document(file_path)
+            self._active_file = file_path
+        else:
+            self._active_file = None
+
+        return {
+            "app_type": app_type,
+            "active_file": str(self._active_file) if self._active_file else None,
+            "open_documents": list(self._documents.keys()),
+        }
 
     def close_document(self, file_path: Path, save: bool = True) -> None:
         """关闭文档."""
@@ -168,7 +250,7 @@ class OfficeManager:
 
         app_type = self._doc_types.get(path_str)
 
-        try:
+        def _close():
             if save:
                 if app_type == "word":
                     doc.SaveAs(path_str)
@@ -184,11 +266,16 @@ class OfficeManager:
                 doc.Close(SaveChanges=False)
             elif app_type == "ppt":
                 doc.Close()
+
+        try:
+            self._retry_on_modal(_close)
         except Exception as e:
             logger.warning(f"关闭文档时出错: {e}")
         finally:
             self._documents.pop(path_str, None)
             self._doc_types.pop(path_str, None)
+            if self._active_file == file_path:
+                self._active_file = None
             logger.info(f"已关闭文档: {path_str}")
 
     def export_pdf(self, file_path: Path, output_path: Path | None = None) -> Path:
@@ -239,15 +326,26 @@ class OfficeManager:
         self._apps.clear()
 
         if force:
-            # 强制终止进程
+            # 强制终止: 仅杀本进程衍生的 Office 实例 (通过 COM 父进程关系判定)
+            # 避免误杀用户手动打开的 Office 窗口 (未保存数据)
             process_names = ["WINWORD.EXE", "EXCEL.EXE", "POWERPNT.EXE"]
-            for proc in psutil.process_iter(["name"]):
+            current_pid = os.getpid()
+            killed_pids: set[int] = set()
+            for proc in psutil.process_iter(["pid", "name", "ppid"]):
                 try:
                     if proc.info["name"] in process_names:
-                        proc.kill()
-                        result["force_killed"].append(proc.info["name"])
+                        # 仅当父进程链能追溯到本进程才杀
+                        if _is_descendant_of(proc.info["pid"], current_pid):
+                            proc.kill()
+                            killed_pids.add(proc.info["pid"])
+                            result["force_killed"].append(proc.info["name"])
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
+            if not killed_pids:
+                # 没有子进程, 通常意味着用户手动打开的 Office
+                logger.warning(
+                    "force=True 但未发现本进程派生的 Office 进程, 跳过强杀以保护用户数据"
+                )
 
         logger.info(f"清理完成: {result}")
         return result

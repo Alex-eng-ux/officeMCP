@@ -4,10 +4,10 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
-from office_mcp.tools.word import register_word_tools
 from office_mcp.tools.excel import register_excel_tools
-from office_mcp.tools.powerpoint import register_ppt_tools
 from office_mcp.tools.office import register_office_tools
+from office_mcp.tools.powerpoint import register_ppt_tools
+from office_mcp.tools.word import register_word_tools
 
 # 配置日志
 logging.basicConfig(

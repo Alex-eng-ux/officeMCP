@@ -14,4 +14,4 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
-.trae/
+test_output/
