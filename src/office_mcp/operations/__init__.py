@@ -1,0 +1,1 @@
+"""Office COM operation implementations."""
