@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     # Office 应用是否可见（调试用）
     visible: bool = False
 
-    class Config:
-        env_prefix = "OFFICE_MCP_"
-        case_sensitive = False
+    model_config = SettingsConfigDict(env_prefix="OFFICE_MCP_", case_sensitive=False)
 
 
 settings = Settings()

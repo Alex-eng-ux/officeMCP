@@ -5,18 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "office-mcp"
 version = "1.0.0"
-description = "MCP Server for local Microsoft Office automation via COM — 366 tools across Word, Excel, and PowerPoint"
+description = "MCP server for local Microsoft Office automation via COM across Word, Excel, and PowerPoint"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
-    {name = "Office MCP Team"},
+    { name = "Office MCP Team" },
 ]
 keywords = ["mcp", "office", "word", "excel", "powerpoint", "com", "automation", "model-context-protocol"]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -34,14 +33,16 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/office-mcp"
-Repository = "https://github.com/yourusername/office-mcp"
-Issues = "https://github.com/yourusername/office-mcp/issues"
+Homepage = "https://github.com/Alex-eng-ux/officeMCP"
+Repository = "https://github.com/Alex-eng-ux/officeMCP"
+Issues = "https://github.com/Alex-eng-ux/officeMCP/issues"
 
 [project.optional-dependencies]
 dev = [
+    "build>=1.2.2",
     "pytest>=7.0.0",
     "ruff>=0.1.0",
+    "tomli>=2.0.1; python_version < '3.11'",
 ]
 
 [project.scripts]

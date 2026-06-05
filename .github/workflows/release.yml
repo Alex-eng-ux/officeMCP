@@ -17,8 +17,36 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Lint runtime correctness hotspots
+        run: ruff check src/office_mcp/core/path_guard.py src/office_mcp/core/office_manager.py src/office_mcp/tools/powerpoint.py --select F821,E9
+
+      - name: Lint release support files
+        run: ruff check count_tools.py tests --select F,E9,I
+
+      - name: Run focused automated tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest tests
+
+      - name: Verify tool surface contract
+        run: python count_tools.py --min-total 300 --require-prefix excel_ --require-prefix word_ --require-prefix ppt_
+
       - name: Build wheel
-        run: pip wheel . --wheel-dir dist
+        run: python -m build --wheel
+
+      - name: Smoke test installed artifact
+        shell: pwsh
+        run: |
+          python -m venv .venv-smoke
+          .\.venv-smoke\Scripts\python -m pip install --upgrade pip
+          $wheel = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          .\.venv-smoke\Scripts\python -m pip install $wheel
+          .\.venv-smoke\Scripts\python -c "import importlib.metadata as md; import office_mcp; print(office_mcp.__version__); ep = next(ep for ep in md.entry_points(group='console_scripts') if ep.name == 'office-mcp'); print(ep.value); func = ep.load(); print(callable(func))"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

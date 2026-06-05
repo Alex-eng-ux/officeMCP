@@ -88,6 +88,7 @@ class OfficeManager:
 
     def _get_app(self, app_type: str) -> Any:
         """获取或创建 Office 应用实例."""
+        app_type = self._normalize_app_type(app_type)
         if app_type in self._apps:
             return self._apps[app_type]
 
@@ -116,6 +117,17 @@ class OfficeManager:
             return self._retry_on_modal(_dispatch)
         except Exception as e:
             raise OfficeNotInstalledError() from e
+
+    def _normalize_app_type(self, app_type: str) -> str:
+        """Normalize user-facing app type values."""
+        normalized = (app_type or "").strip().lower()
+        if normalized in {"powerpoint", "power point"}:
+            normalized = "ppt"
+
+        if normalized not in {"word", "excel", "ppt"}:
+            raise COMOperationError(f"未知的应用类型: {app_type}")
+
+        return normalized
 
     def _get_app_type_by_path(self, file_path: Path) -> str:
         """根据文件扩展名判断应用类型."""
@@ -212,7 +224,7 @@ class OfficeManager:
             raise DocumentNotOpenError(
                 f"文件未激活: {file_path}. "
                 f"当前激活的文件是 {self._active_file}. "
-                f"请先调用 activate_app 切换到目标文件."
+                f"请先调用 office_activate 切换到目标文件."
             )
         path_str = str(file_path)
         doc = self._documents.get(path_str)
@@ -227,16 +239,25 @@ class OfficeManager:
             app_type: "word" / "excel" / "ppt"
             file_path: 可选，指定要激活的文件路径
         """
+        normalized_app_type = self._normalize_app_type(app_type)
+
         if file_path:
+            inferred_app_type = self._get_app_type_by_path(file_path)
+            if normalized_app_type != inferred_app_type:
+                raise COMOperationError(
+                    "激活应用",
+                    f"app_type={normalized_app_type} 与文件类型 {inferred_app_type} 不一致: {file_path}",
+                )
             path_str = str(file_path)
             if path_str not in self._documents:
                 self.open_document(file_path)
             self._active_file = file_path
         else:
+            self._get_app(normalized_app_type)
             self._active_file = None
 
         return {
-            "app_type": app_type,
+            "app_type": normalized_app_type,
             "active_file": str(self._active_file) if self._active_file else None,
             "open_documents": list(self._documents.keys()),
         }

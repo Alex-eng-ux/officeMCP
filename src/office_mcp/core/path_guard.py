@@ -32,12 +32,14 @@ def validate_path(file_path: str) -> Path:
         raise PathNotAllowedError("空路径")
 
     # 展开环境变量
-    expanded = os.path.expandvars(file_path)
-    path = Path(expanded).resolve()
+    expanded = os.path.expanduser(os.path.expandvars(file_path))
+    raw_path = Path(expanded)
 
     # 必须是绝对路径
-    if not path.is_absolute():
-        raise PathNotAllowedError(str(path))
+    if not raw_path.is_absolute():
+        raise PathNotAllowedError(file_path)
+
+    path = raw_path.resolve()
 
     path_str = str(path)
 

@@ -1,3 +1,3 @@
-"""Office MCP Server - 通过 COM 自动化调用本地 Microsoft Office."""
+"""Office MCP package metadata."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

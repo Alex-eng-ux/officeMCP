@@ -4,6 +4,8 @@ __pycache__/
 
 .Python
 .venv/
+.venv-local/
+.venv-smoke/
 venv/
 env/
 
@@ -13,5 +15,8 @@ dist/
 
 .pytest_cache/
 .ruff_cache/
+.trae/
+.vs/
 
 test_output/
+_mergework/
