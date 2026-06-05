@@ -1,9 +1,8 @@
-"""Office MCP Server 入口."""
+"""Office MCP server entrypoint."""
 
 import logging
 
-from mcp.server.fastmcp import FastMCP
-
+from office_mcp.compat import FastMCP
 from office_mcp.tools.excel import register_excel_tools
 from office_mcp.tools.office import register_office_tools
 from office_mcp.tools.powerpoint import register_ppt_tools

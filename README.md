@@ -49,7 +49,7 @@ Installed console script:
     "office": {
       "command": "office-mcp",
       "env": {
-        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop"
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work\\client-project;E:\\test"
       }
     }
   }
@@ -65,12 +65,35 @@ Python module entry point:
       "command": "python",
       "args": ["-m", "office_mcp.server"],
       "env": {
-        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop"
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work\\client-project;E:\\test"
       }
     }
   }
 }
 ```
+
+### Configure project roots, not just Documents
+
+In practice, most users want to work directly inside their repo, shared drive, or test workspace instead of copying files into `Documents` first. Treat `OFFICE_MCP_ALLOWED_DIRS` as a list of trusted working roots and include every directory where the agent should be allowed to read or write Office files.
+
+Recommended examples:
+
+- `D:\\work\\client-project`
+- `D:\\repos\\proposal-kit`
+- `E:\\test`
+- `D:\\design-assets`
+
+Every Office file path must be absolute and must resolve under one of those roots.
+
+If you do want the server to also trust detected workspace roots automatically, set:
+
+```json
+{
+  "OFFICE_MCP_AUTO_DISCOVER_DIRS": "true"
+}
+```
+
+By default, explicit `OFFICE_MCP_ALLOWED_DIRS` entries win and automatic discovery stays off.
 
 ## What we learned from `ppt-mcp`
 
@@ -190,7 +213,10 @@ These phrases tend to produce better presentation results:
 ### Path guard
 
 - Absolute file paths are required and must resolve inside `OFFICE_MCP_ALLOWED_DIRS`
+- Configure `OFFICE_MCP_ALLOWED_DIRS` with the real project roots your agent uses, not only profile folders such as `Documents`
+- If `OFFICE_MCP_ALLOWED_DIRS` is unset, Office MCP falls back to detected workspace and user-facing directories
 - System directories such as `C:\Windows` and `C:\Program Files` are blocked
+- If a path is rejected, check that the rejected path is absolute and that the relevant project root is present in `OFFICE_MCP_ALLOWED_DIRS`
 
 ### Edit safety
 
@@ -211,9 +237,13 @@ These phrases tend to produce better presentation results:
 | Variable | Description | Default |
 |---|---|---|
 | `OFFICE_MCP_ALLOWED_DIRS` | Allowed directories, separated by `;` | `%USERPROFILE%` |
+| `OFFICE_MCP_AUTO_DISCOVER_DIRS` | Merge detected workspace roots into the allowlist when explicit roots are configured | `false` |
 | `OFFICE_MCP_DEFAULT_OVERWRITE` | Allow overwrite by default | `false` |
 | `OFFICE_MCP_BACKUP_BEFORE_EDIT` | Auto-backup before editing | `true` |
-| `OFFICE_MCP_VISIBLE` | Show Office windows for debugging | `false` |
+| `OFFICE_MCP_VISIBLE` | Shared visibility fallback for Office windows | `true` |
+| `OFFICE_MCP_WORD_VISIBLE` | Show the Word window | falls back to `OFFICE_MCP_VISIBLE` |
+| `OFFICE_MCP_EXCEL_VISIBLE` | Show the Excel window | falls back to `OFFICE_MCP_VISIBLE` |
+| `OFFICE_MCP_PPT_VISIBLE` | Show the PowerPoint window | falls back to `OFFICE_MCP_VISIBLE` |
 
 ## Architecture
 

@@ -1030,9 +1030,10 @@ def _mail_merge(doc: Any, op: dict) -> str:
             - output_path: 输出到新文档的路径 (可选，不提供则合并到当前)
     """
     data_source = op.get("data_source", "")
-    connection = op.get("connection", "")
-    sql_statement = op.get("sql_statement", "")
-    output_path = op.get("output_path", "")
+    connection = op.get("connection", "").strip()
+    sql_statement = op.get("sql_statement", "").strip()
+    output_path = op.get("output_path", "").strip()
+    send_to_new_document = bool(op.get("send_to_new_document", False) or output_path)
 
     if not data_source:
         raise COMOperationError("mail_merge", "data_source 不能为空")
@@ -1045,33 +1046,50 @@ def _mail_merge(doc: Any, op: dict) -> str:
             raise COMOperationError("mail_merge", "sql_statement 仅允许 SELECT 查询")
 
     try:
-        # 配置邮件合并
         mail_merge = doc.MailMerge
-        mail_merge.OpenDataSource(
-            Name=data_source,
-            Connection=connection,
-            SQLStatement=sql_statement,
-            ConfirmConversions=False,
-            ReadOnly=True,
-            LinkToSource=False,
-            AddToRecentFiles=False,
-            Format=0,  # wdOpenFormatAuto
-        )
+        open_data_source_kwargs = {
+            "Name": data_source,
+            "ConfirmConversions": False,
+            "ReadOnly": True,
+            "LinkToSource": False,
+            "AddToRecentFiles": False,
+            "Format": 0,  # wdOpenFormatAuto
+        }
+        if connection:
+            open_data_source_kwargs["Connection"] = connection
+        if sql_statement:
+            open_data_source_kwargs["SQLStatement"] = sql_statement
 
-        # 执行合并
+        if send_to_new_document and hasattr(mail_merge, "Destination"):
+            mail_merge.Destination = 0  # wdSendToNewDocument
+
+        mail_merge.OpenDataSource(**open_data_source_kwargs)
+        app = doc.Application
+        template_full_name = getattr(doc, "FullName", "")
+        mail_merge.Execute(Pause=False)
+
         if output_path:
-            # 合并到新文档
-            result = mail_merge.Execute(Pause=False)
-            if result and hasattr(result, 'SaveAs'):
-                result.SaveAs(output_path)
-                result.Close()
-                return f"mail_merge_executed_to_file: {output_path}"
-            else:
-                return f"mail_merge_executed: {data_source} (output_path 可能需要通过 Word 界面保存)"
-        else:
-            # 合并到当前文档
-            mail_merge.Execute(Pause=False)
-            return f"mail_merge_executed: {data_source}"
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            merged_doc = getattr(app, "ActiveDocument", None)
+            if merged_doc is None:
+                raise COMOperationError("mail_merge", "mail merge did not produce an active result document")
+
+            merged_full_name = getattr(merged_doc, "FullName", "")
+            if merged_doc is doc or (template_full_name and merged_full_name == template_full_name):
+                raise COMOperationError(
+                    "mail_merge",
+                    "mail merge did not switch to a new result document before save",
+                )
+
+            merged_doc.SaveAs(str(output_file))
+            merged_doc.Close(SaveChanges=False)
+            return f"mail_merge_executed_to_file: {output_file}"
+
+        if send_to_new_document:
+            return f"mail_merge_executed_to_new_document: {data_source}"
+
+        return f"mail_merge_executed: {data_source}"
     except Exception as e:
         raise COMOperationError("mail_merge", str(e))
 

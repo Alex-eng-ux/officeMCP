@@ -1,8 +1,10 @@
-"""自定义异常类."""
+"""Custom exceptions for Office MCP."""
+
+from __future__ import annotations
 
 
 class OfficeMCPError(Exception):
-    """Office MCP Server 基类异常."""
+    """Base exception for Office MCP server errors."""
 
     def __init__(self, message: str, suggestion: str = ""):
         super().__init__(message)
@@ -11,58 +13,64 @@ class OfficeMCPError(Exception):
 
     def __str__(self) -> str:
         if self.suggestion:
-            return f"{self.message}\n建议: {self.suggestion}"
+            return f"{self.message}\nSuggestion: {self.suggestion}"
         return self.message
 
 
 class PathNotAllowedError(OfficeMCPError):
-    """路径不在允许列表中."""
+    """Raised when a path falls outside the allowed directories."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, allowed_dirs: list[str] | None = None):
+        suggestion = (
+            "Use an absolute path inside OFFICE_MCP_ALLOWED_DIRS or a detected workspace directory."
+        )
+        if allowed_dirs:
+            suggestion += f" Effective allowed directories: {', '.join(allowed_dirs)}"
         super().__init__(
-            message=f"路径不在允许的操作范围内: {path}",
-            suggestion="请使用绝对路径，并确保路径在 OFFICE_MCP_ALLOWED_DIRS 配置的目录内。",
+            message=f"Path is outside the allowed operation scope: {path}",
+            suggestion=suggestion,
         )
 
 
 class DocumentNotOpenError(OfficeMCPError):
-    """文档未打开."""
+    """Raised when the target document is not open."""
 
     def __init__(self, file_path: str):
         super().__init__(
-            message=f"文档未打开: {file_path}",
-            suggestion="请先使用 open 或 create 工具打开/创建文档。",
+            message=f"Document is not open: {file_path}",
+            suggestion="Open or create the document first, or activate it with office_activate.",
         )
 
 
 class DocumentAlreadyOpenError(OfficeMCPError):
-    """文档已被打开."""
+    """Raised when the target document is already open."""
 
     def __init__(self, file_path: str):
         super().__init__(
-            message=f"文档已被打开: {file_path}",
-            suggestion="如需重新打开，请先关闭该文档。",
+            message=f"Document is already open: {file_path}",
+            suggestion="Close the document first if you need to reopen it.",
         )
 
 
 class COMOperationError(OfficeMCPError):
-    """COM 调用失败."""
+    """Raised when a COM automation call fails."""
 
     def __init__(self, operation: str, detail: str = ""):
-        msg = f"COM 操作失败: {operation}"
+        message = f"COM operation failed: {operation}"
         if detail:
-            msg += f" - {detail}"
+            message += f" - {detail}"
         super().__init__(
-            message=msg,
-            suggestion="请检查 Office 是否正常运行，或尝试使用 office_cleanup 清理后重试。",
+            message=message,
+            suggestion="Check that Microsoft Office is installed and responsive, then retry. "
+            "If Office is stuck behind a dialog, run office_cleanup before retrying.",
         )
 
 
 class OfficeNotInstalledError(OfficeMCPError):
-    """未检测到 Office 安装."""
+    """Raised when Microsoft Office cannot be reached through COM."""
 
     def __init__(self):
         super().__init__(
-            message="未检测到 Microsoft Office 安装",
-            suggestion="请确保已安装 Microsoft Office (Word, Excel, PowerPoint)。",
+            message="Microsoft Office does not appear to be installed or available through COM",
+            suggestion="Install Microsoft Office with Word, Excel, and PowerPoint available.",
         )

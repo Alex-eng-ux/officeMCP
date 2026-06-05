@@ -18,5 +18,5 @@ def test_activate_app_rejects_mismatched_file_type(tmp_path: Path) -> None:
     manager = OfficeManager()
     ppt_path = tmp_path / "deck.pptx"
 
-    with pytest.raises(COMOperationError, match="不一致"):
+    with pytest.raises(COMOperationError, match=r"app_type=word.*deck\.pptx"):
         manager.activate_app("word", ppt_path)

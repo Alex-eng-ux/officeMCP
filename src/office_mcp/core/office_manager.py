@@ -45,6 +45,16 @@ def _is_descendant_of(pid: int, ancestor_pid: int, max_depth: int = 6) -> bool:
             return False
     return False
 
+
+def _get_app_visibility(app_type: str) -> bool:
+    """Return visibility for a specific Office application."""
+    visibility_map = {
+        "word": settings.word_visible,
+        "excel": settings.excel_visible,
+        "ppt": settings.ppt_visible,
+    }
+    return visibility_map[app_type]
+
 # 常量
 WORD_PROGID = "Word.Application"
 EXCEL_PROGID = "Excel.Application"
@@ -108,7 +118,7 @@ class OfficeManager:
 
         def _dispatch():
             app = win32com.client.Dispatch(progid)
-            app.Visible = settings.visible
+            app.Visible = _get_app_visibility(app_type)
             self._apps[app_type] = app
             logger.info(f"已启动 {progid}")
             return app
@@ -218,19 +228,28 @@ class OfficeManager:
         except Exception as e:
             raise COMOperationError("创建文档", str(e)) from e
 
-    def get_document(self, file_path: Path) -> Any:
-        """获取已打开的文档."""
-        if self._active_file and str(self._active_file.resolve()) != str(file_path.resolve()):
+    def get_document(self, file_path: Path, require_active: bool = True) -> Any:
+        """Get an already-open document."""
+        if require_active and self._active_file and str(self._active_file.resolve()) != str(file_path.resolve()):
             raise DocumentNotOpenError(
-                f"文件未激活: {file_path}. "
-                f"当前激活的文件是 {self._active_file}. "
-                f"请先调用 office_activate 切换到目标文件."
+                f"Document is not active: {file_path}. "
+                f"Current active file: {self._active_file}. "
+                "Call office_activate first if this tool requires the active document lock."
             )
         path_str = str(file_path)
         doc = self._documents.get(path_str)
         if doc is None:
             raise DocumentNotOpenError(path_str)
         return doc
+
+    def ensure_document(self, file_path: Path, activate: bool = False) -> Any:
+        """Open a document on demand and optionally mark it active."""
+        path_str = str(file_path)
+        if path_str not in self._documents:
+            self.open_document(file_path)
+        if activate:
+            self._active_file = file_path
+        return self._documents[path_str]
 
     def activate_app(self, app_type: str, file_path: Path | None = None) -> dict:
         """激活指定应用/文档，后续操作自动锁定到该文件.

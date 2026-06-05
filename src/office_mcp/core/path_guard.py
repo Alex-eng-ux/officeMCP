@@ -1,4 +1,6 @@
-"""路径安全校验."""
+"""Path validation helpers for Office MCP."""
+
+from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -6,7 +8,6 @@ from pathlib import Path
 from office_mcp.config import get_allowed_dirs
 from office_mcp.core.errors import PathNotAllowedError
 
-# 禁止访问的系统目录
 BLOCKED_PREFIXES = [
     r"C:\Windows",
     r"C:\Program Files",
@@ -16,42 +17,31 @@ BLOCKED_PREFIXES = [
 ]
 
 
+def _allowed_dir_strings() -> list[str]:
+    """Return allowed directories as normalized strings for diagnostics."""
+    return [str(path) for path in get_allowed_dirs()]
+
+
 def validate_path(file_path: str) -> Path:
-    """校验文件路径是否允许操作.
-
-    Args:
-        file_path: 文件路径
-
-    Returns:
-        解析后的绝对路径
-
-    Raises:
-        PathNotAllowedError: 路径不允许操作
-    """
+    """Validate that a path is safe and inside the allowed scope."""
     if not file_path:
-        raise PathNotAllowedError("空路径")
+        raise PathNotAllowedError("<empty>", _allowed_dir_strings())
 
-    # 展开环境变量
     expanded = os.path.expanduser(os.path.expandvars(file_path))
     raw_path = Path(expanded)
-
-    # 必须是绝对路径
     if not raw_path.is_absolute():
-        raise PathNotAllowedError(file_path)
+        raise PathNotAllowedError(file_path, _allowed_dir_strings())
 
     path = raw_path.resolve()
-
     path_str = str(path)
 
-    # 检查系统目录
     for blocked in BLOCKED_PREFIXES:
         if path_str.lower().startswith(blocked.lower()):
-            raise PathNotAllowedError(str(path))
+            raise PathNotAllowedError(str(path), _allowed_dir_strings())
 
-    # 检查允许目录
     allowed_dirs = get_allowed_dirs()
     if not allowed_dirs:
-        raise PathNotAllowedError(str(path))
+        raise PathNotAllowedError(str(path), [])
 
     for allowed in allowed_dirs:
         try:
@@ -60,16 +50,9 @@ def validate_path(file_path: str) -> Path:
         except ValueError:
             continue
 
-    raise PathNotAllowedError(str(path))
+    raise PathNotAllowedError(str(path), [str(item) for item in allowed_dirs])
 
 
 def validate_paths(*paths: str) -> list[Path]:
-    """批量校验路径.
-
-    Args:
-        paths: 多个文件路径
-
-    Returns:
-        解析后的绝对路径列表
-    """
-    return [validate_path(p) for p in paths if p]
+    """Validate multiple paths."""
+    return [validate_path(path) for path in paths if path]

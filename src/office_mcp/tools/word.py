@@ -2,8 +2,7 @@
 
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-
+from office_mcp.compat import FastMCP
 from office_mcp.config import settings
 from office_mcp.core.errors import OfficeMCPError
 from office_mcp.core.office_manager import office_manager
@@ -480,14 +479,15 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            validate_path(data_source)
-            doc = office_manager.get_document(path)
+            data_path = validate_path(data_source)
+            doc = office_manager.ensure_document(path, activate=True)
             result = _mail_merge(doc, {
-                "data_source": data_source,
+                "data_source": str(data_path),
                 "connection": connection,
                 "sql_statement": sql_statement,
+                "send_to_new_document": False,
             })
-            return f"已执行邮件合并: {data_source}"
+            return f"已执行邮件合并: {result}"
         except OfficeMCPError as e:
             return f"错误: {e}"
 
@@ -647,15 +647,17 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            validate_path(data_source)
+            data_path = validate_path(data_source)
+            out_path = ""
             if output_path:
-                validate_path(output_path)
-            doc = office_manager.get_document(path)
+                out_path = str(validate_path(output_path))
+            doc = office_manager.ensure_document(path, activate=True)
             result = _mail_merge(doc, {
-                "data_source": data_source,
+                "data_source": str(data_path),
                 "connection": connection,
                 "sql_statement": sql_statement,
-                "output_path": output_path,
+                "output_path": out_path,
+                "send_to_new_document": True,
             })
             return f"已执行邮件合并: {result}"
         except OfficeMCPError as e:

@@ -30,9 +30,15 @@ def test_public_tools_reject_relative_paths(tmp_path: Path, monkeypatch) -> None
     register_excel_tools(fake_mcp)
     register_ppt_tools(fake_mcp)
 
-    assert "路径不在允许的操作范围内" in fake_mcp.tools["word_open_document"]("draft.docx")
-    assert "路径不在允许的操作范围内" in fake_mcp.tools["excel_open_workbook"]("draft.xlsx")
+    word_result = fake_mcp.tools["word_open_document"]("draft.docx")
+    assert "draft.docx" in word_result
+    assert "OFFICE_MCP_ALLOWED_DIRS" in word_result
+
+    excel_result = fake_mcp.tools["excel_open_workbook"]("draft.xlsx")
+    assert "draft.xlsx" in excel_result
+    assert "OFFICE_MCP_ALLOWED_DIRS" in excel_result
 
     ppt_result = fake_mcp.tools["ppt_open_presentation"]("draft.pptx")
     assert isinstance(ppt_result, str)
-    assert "路径不在允许的操作范围内" in ppt_result
+    assert "draft.pptx" in ppt_result
+    assert "OFFICE_MCP_ALLOWED_DIRS" in ppt_result

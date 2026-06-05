@@ -1,7 +1,6 @@
 """通用 Office MCP 工具."""
 
-from mcp.server.fastmcp import FastMCP
-
+from office_mcp.compat import FastMCP
 from office_mcp.core.errors import OfficeMCPError
 from office_mcp.core.office_manager import office_manager
 from office_mcp.core.path_guard import validate_path
