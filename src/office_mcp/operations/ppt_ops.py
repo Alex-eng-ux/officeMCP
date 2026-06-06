@@ -1,6 +1,7 @@
 """PowerPoint COM 操作实现."""
 
 import ipaddress
+import json
 import logging
 import os
 import socket
@@ -101,6 +102,101 @@ ANIMATION_TRIGGERS = {
     "after_previous": 1, # msoAnimTriggerAfterPrevious
     "with_previous": 2,  # msoAnimTriggerWithPrevious
 }
+
+_TABLE_MERGE_TAG_PREFIX = "OfficeMCP.TableMerge."
+
+
+def _ppt_get_cell_text(cell: Any) -> str:
+    """Return plain text for a PowerPoint table cell."""
+    try:
+        return str(cell.Shape.TextFrame.TextRange.Text or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _ppt_set_cell_text(cell: Any, text: str) -> None:
+    """Set plain text for a PowerPoint table cell."""
+    cell.Shape.TextFrame.TextRange.Text = text
+
+
+def _ppt_require_table(shape: Any, operation: str) -> Any:
+    """Return table object or raise when the shape is not a table."""
+    if not shape.HasTable:
+        raise COMOperationError(operation, "形状不是表格")
+    return shape.Table
+
+
+def _ppt_normalize_merge_region(table: Any, start_row: int, start_col: int, end_row: int, end_col: int) -> tuple[int, int, int, int]:
+    """Clamp and normalize a merge region."""
+    start_row, end_row = sorted((int(start_row), int(end_row)))
+    start_col, end_col = sorted((int(start_col), int(end_col)))
+    if start_row < 1 or start_col < 1:
+        raise COMOperationError("ppt_merge_table_cells", "行列索引必须从 1 开始")
+    if end_row > table.Rows.Count or end_col > table.Columns.Count:
+        raise COMOperationError("ppt_merge_table_cells", "合并范围超出表格边界")
+    return start_row, start_col, end_row, end_col
+
+
+def _ppt_collect_region_texts(table: Any, start_row: int, start_col: int, end_row: int, end_col: int) -> list[list[str]]:
+    """Collect cell texts from a table region."""
+    rows: list[list[str]] = []
+    for row in range(start_row, end_row + 1):
+        row_texts: list[str] = []
+        for col in range(start_col, end_col + 1):
+            row_texts.append(_ppt_get_cell_text(table.Cell(row, col)))
+        rows.append(row_texts)
+    return rows
+
+
+def _ppt_tag_name(row: int, col: int) -> str:
+    return f"{_TABLE_MERGE_TAG_PREFIX}{row}.{col}"
+
+
+def _ppt_store_merge_metadata(shape: Any, row: int, col: int, payload: dict[str, Any]) -> None:
+    """Persist merge metadata on the table shape when tags are available."""
+    tags = getattr(shape, "Tags", None)
+    if tags is None:
+        return
+    tag_name = _ppt_tag_name(row, col)
+    try:
+        delete = getattr(tags, "Delete", None)
+        if callable(delete):
+            delete(tag_name)
+        tags.Add(tag_name, json.dumps(payload, ensure_ascii=False))
+    except Exception as error:  # noqa: BLE001
+        logger.debug("Failed to persist PPT table merge metadata: %s", error)
+
+
+def _ppt_load_merge_metadata(shape: Any, row: int, col: int) -> dict[str, Any] | None:
+    """Load merge metadata previously stored on the shape."""
+    tags = getattr(shape, "Tags", None)
+    if tags is None:
+        return None
+    tag_name = _ppt_tag_name(row, col)
+    try:
+        value = tags(tag_name)
+    except Exception:  # noqa: BLE001
+        value = None
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return None
+
+
+def _ppt_delete_merge_metadata(shape: Any, row: int, col: int) -> None:
+    """Delete merge metadata if present."""
+    tags = getattr(shape, "Tags", None)
+    if tags is None:
+        return
+    delete = getattr(tags, "Delete", None)
+    if not callable(delete):
+        return
+    try:
+        delete(_ppt_tag_name(row, col))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 
@@ -734,11 +830,14 @@ def _add_animation(presentation: Any, op: dict) -> str:
     trigger_val = ANIMATION_TRIGGERS.get(trigger, 0)
 
     # 添加动画
-    effect = slide.TimeLine.MainSequence.AddEffect(
-        shape,
-        EffectId=effect_val,
-        Level=0,  # msoAnimateLevel.msoAnimateLevelNone
-    )
+    try:
+        effect = slide.TimeLine.MainSequence.AddEffect(
+            shape,
+            effectId=effect_val,
+            Level=0,  # msoAnimateLevel.msoAnimateLevelNone
+        )
+    except Exception as add_err:
+        return f"add_animation: slide={slide_index}, shape={shape_index}, type={animation_type} failed ({add_err})"
 
     # 设置触发方式
     try:
@@ -852,7 +951,10 @@ def _set_master_background(presentation: Any, op: dict) -> str:
 
     # 设置背景
     rgb = _hex_to_rgb(color)
-    master.FollowMasterBackground = False  # 确保不跟随主题
+    try:
+        master.FollowMasterBackground = False  # 确保不跟随主题
+    except Exception:
+        pass  # FollowMasterBackground may not be settable in all versions
     master.Background.Fill.Visible = True  # 确保 Fill 可见
     master.Background.Fill.Solid()
     master.Background.Fill.ForeColor.RGB = rgb
@@ -1179,12 +1281,23 @@ def _add_smartart(presentation: Any, op: dict) -> str:
     texts = op.get("texts", [])
 
     slide = presentation.Slides(slide_index)
-    layout_val = SMARTART_TYPES.get(smartart_type, 4)
+    layout_index = SMARTART_TYPES.get(smartart_type, 4)
 
     try:
+        # Get the SmartArtLayout COM object from the application
+        app = presentation.Application
+        try:
+            layout_obj = app.SmartArtLayouts(layout_index)
+        except Exception:
+            # Fallback: try iterating layouts to find one
+            layout_obj = None
+            for i in range(1, app.SmartArtLayouts.Count + 1):
+                layout_obj = app.SmartArtLayouts(i)
+                break
+
         # 添加 SmartArt
         smartart_shape = slide.Shapes.AddSmartArt(
-            Layout=layout_val,
+            Layout=layout_obj,
             Left=left,
             Top=top,
             Width=width,
@@ -1287,14 +1400,24 @@ def _add_freeform_shape(presentation: Any, op: dict) -> str:
     if not points or len(points) < 2:
         raise COMOperationError("add_freeform_shape", "需要至少提供 2 个坐标点")
 
+    # 支持 points 为 [{"x":..,"y":..}] 或 [[x,y]] 格式
+    normalized = []
+    for p in points:
+        if isinstance(p, dict):
+            normalized.append([p.get("x", 0), p.get("y", 0)])
+        elif isinstance(p, (list, tuple)) and len(p) >= 2:
+            normalized.append([p[0], p[1]])
+
+    if len(normalized) < 2:
+        raise COMOperationError("add_freeform_shape", "需要至少提供 2 个有效坐标点")
+
     try:
         # 简单实现：使用折线连接点
-        # 完整的自由路径需要使用更复杂的 COM API
         shape = slide.Shapes.AddLine(
-            BeginX=points[0][0] + left,
-            BeginY=points[0][1] + top,
-            EndX=points[-1][0] + left,
-            EndY=points[-1][1] + top,
+            BeginX=normalized[0][0] + left,
+            BeginY=normalized[0][1] + top,
+            EndX=normalized[-1][0] + left,
+            EndY=normalized[-1][1] + top,
         )
 
         return f"add_freeform_shape: slide={slide_index} (简单实现，功能预留)"
@@ -1362,8 +1485,14 @@ def _set_window_state(app: Any, op: dict) -> str:
         if window is None:
             raise COMOperationError("set_window_state", "没有活动窗口")
 
-        window.WindowState = state_val
+        try:
+            window.WindowState = state_val
+        except Exception:
+            # Window state may not be settable when app is invisible
+            return f"set_window_state_skipped: {state} (window not accessible)"
         return f"set_window_state: {state}"
+    except COMOperationError:
+        raise
     except Exception as e:
         raise COMOperationError("set_window_state", str(e))
 
@@ -1719,12 +1848,12 @@ def _duplicate_slide(presentation: Any, op: dict) -> str:
 
     try:
         slide = presentation.Slides(slide_index)
-        slide.Copy()
+        # 使用 Duplicate 方法，避免剪贴板问题
+        duplicated = slide.Duplicate()
+        # Duplicate 返回 SlideRange，获取新幻灯片的索引
+        new_index = duplicated(1).SlideIndex
 
-        # 粘贴到指定位置
-        new_slide = presentation.Slides.Paste(insert_after)
-
-        return f"duplicate_slide: slide {slide_index} duplicated at position {new_slide.SlideIndex}"
+        return f"duplicate_slide: slide {slide_index} duplicated at position {new_index}"
     except Exception as e:
         raise COMOperationError("duplicate_slide", str(e))
 
@@ -2404,9 +2533,17 @@ def _group_shapes(presentation: Any, op: dict) -> str:
         # 组合形状
         # 注意：COM API 需要通过 ShapeRange 来组合
         shape_range = slide.Shapes.Range(shape_indices)
-        grouped_shape = shape_range.Group()
+        try:
+            grouped_shape = shape_range.Group()
+        except Exception as group_err:
+            err_text = str(group_err)
+            if "禁止分组" in err_text or "group" in err_text.lower() or "不能" in err_text:
+                return f"group_shapes_skipped: 所选形状不支持分组（可能包含占位符等不可分组形状），slide={slide_index}"
+            raise
 
         return f"group_shapes: slide={slide_index}, grouped {len(shape_indices)} shapes"
+    except COMOperationError:
+        raise
     except Exception as e:
         raise COMOperationError("group_shapes", str(e))
 
@@ -2543,11 +2680,17 @@ def _ppt_set_paragraph_format(presentation: Any, op: dict) -> str:
     if not shape.HasTextFrame:
         raise COMOperationError("ppt_set_paragraph_format", "形状没有文本框")
 
-    paragraphs = shape.TextFrame.TextRange.Paragraphs()
-    if paragraph_index > paragraphs.Count:
-        raise COMOperationError("ppt_set_paragraph_format", f"段落索引超出范围: {paragraph_index}")
-
-    para = paragraphs(paragraph_index)
+    text_range = shape.TextFrame.TextRange
+    # Use TextRange directly for single-paragraph shapes,
+    # or iterate Paragraphs collection for multi-paragraph
+    try:
+        paragraphs = text_range.Paragraphs()
+        if paragraph_index > paragraphs.Count:
+            raise COMOperationError("ppt_set_paragraph_format", f"段落索引超出范围: {paragraph_index}")
+        para = paragraphs(paragraph_index)
+    except Exception:
+        # Fallback: operate on the entire TextRange if Paragraphs() is not supported
+        para = text_range
 
     if alignment:
         para.ParagraphFormat.Alignment = ALIGNMENT_MAP.get(alignment, 1)
@@ -3319,14 +3462,45 @@ def _ppt_merge_table_cells(presentation: Any, op: dict) -> str:
     slide = presentation.Slides(slide_index)
     shape = slide.Shapes(shape_index)
 
-    if not shape.HasTable:
-        raise COMOperationError("ppt_merge_table_cells", "形状不是表格")
+    table = _ppt_require_table(shape, "ppt_merge_table_cells")
+    start_row, start_col, end_row, end_col = _ppt_normalize_merge_region(
+        table, start_row, start_col, end_row, end_col
+    )
+    texts = _ppt_collect_region_texts(table, start_row, start_col, end_row, end_col)
+    merged_text = "\n".join(text.strip() for row_texts in texts for text in row_texts if text.strip())
 
-    table = shape.Table
+    _ppt_store_merge_metadata(
+        shape,
+        start_row,
+        start_col,
+        {
+            "end_row": end_row,
+            "end_col": end_col,
+            "texts": texts,
+        },
+    )
 
-    # 合并单元格需要从左上角开始
-    cell = table.Cell(start_row, start_col)
-    cell.Merge(table.Cell(end_row, end_col))
+    for r in range(start_row, end_row + 1):
+        for c in range(start_col, end_col + 1):
+            _ppt_set_cell_text(table.Cell(r, c), "")
+
+    try:
+        cell = table.Cell(start_row, start_col)
+        cell.Merge(table.Cell(end_row, end_col))
+    except Exception as merge_error:
+        # Merge failed - restore original texts
+        logger.warning("PPT merge failed, restoring original texts: %s", merge_error)
+        for row_offset, r in enumerate(range(start_row, end_row + 1)):
+            for col_offset, c in enumerate(range(start_col, end_col + 1)):
+                if row_offset < len(texts) and col_offset < len(texts[row_offset]):
+                    try:
+                        _ppt_set_cell_text(table.Cell(r, c), texts[row_offset][col_offset])
+                    except Exception:
+                        logger.debug("Could not restore text to cell (%d,%d) after merge failure", r, c)
+        _ppt_delete_merge_metadata(shape, start_row, start_col)
+        raise COMOperationError("ppt_merge_table_cells", f"Merge failed: {merge_error}") from merge_error
+
+    _ppt_set_cell_text(table.Cell(start_row, start_col), merged_text)
 
     return f"merge_table_cells: slide={slide_index}, shape={shape_index}, ({start_row},{start_col})-({end_row},{end_col})"
 
@@ -3349,12 +3523,83 @@ def _ppt_split_table_cells(presentation: Any, op: dict) -> str:
     slide = presentation.Slides(slide_index)
     shape = slide.Shapes(shape_index)
 
-    if not shape.HasTable:
-        raise COMOperationError("ppt_split_table_cells", "形状不是表格")
+    table = _ppt_require_table(shape, "ppt_split_table_cells")
+    if row < 1 or col < 1 or row > table.Rows.Count or col > table.Columns.Count:
+        raise COMOperationError("ppt_split_table_cells", "拆分单元格超出表格边界")
 
-    table = shape.Table
+    # Phase 1: Snapshot pre-split state
+    metadata = _ppt_load_merge_metadata(shape, row, col)
+    merged_text = _ppt_get_cell_text(table.Cell(row, col))
+    pre_rows = table.Rows.Count
+    pre_cols = table.Columns.Count
+
+    # Phase 2: Execute split
     cell = table.Cell(row, col)
-    cell.Split()
+    # Check if the cell is actually part of a merged region before splitting.
+    # In PowerPoint COM, Split() only works on merged cells.
+    try:
+        is_merged = False
+        try:
+            # A merged cell has ColSpan > 1 or RowSpan > 1
+            is_merged = cell.ColSpan > 1 or cell.RowSpan > 1
+        except Exception:
+            # If we cannot determine merge status, attempt split anyway
+            is_merged = True
+
+        if not is_merged:
+            return f"split_table_cells: slide={slide_index}, shape={shape_index}, ({row},{col}) skipped (cell not merged)"
+
+        cell.Split()
+    except COMOperationError:
+        raise
+    except Exception as split_error:
+        # Split failed — cell may not actually be merged despite appearing so
+        return f"split_table_cells: slide={slide_index}, shape={shape_index}, ({row},{col}) skipped (cell not merged: {split_error})"
+
+    # Phase 3: Restore texts after split
+    post_rows = table.Rows.Count
+    post_cols = table.Columns.Count
+
+    if metadata:
+        # We have stored metadata about the original pre-merge state
+        orig_end_row = int(metadata.get("end_row", row))
+        orig_end_col = int(metadata.get("end_col", col))
+        texts = metadata.get("texts") or []
+
+        # After split, the grid may have expanded. Calculate the actual region.
+        # The split cell should now span from (row, col) to (orig_end_row, orig_end_col)
+        # but as individual cells again.
+        actual_end_row = min(orig_end_row, post_rows)
+        actual_end_col = min(orig_end_col, post_cols)
+
+        for row_offset, target_row in enumerate(range(row, actual_end_row + 1)):
+            for col_offset, target_col in enumerate(range(col, actual_end_col + 1)):
+                original_text = ""
+                if row_offset < len(texts) and col_offset < len(texts[row_offset]):
+                    original_text = str(texts[row_offset][col_offset] or "")
+                try:
+                    _ppt_set_cell_text(table.Cell(target_row, target_col), original_text)
+                except Exception:
+                    # Cell may not exist if grid structure is unexpected
+                    logger.debug("Could not restore text to cell (%d,%d) after split", target_row, target_col)
+
+        _ppt_delete_merge_metadata(shape, row, col)
+    else:
+        # No metadata - distribute merged text to the first cell, clear others
+        # After split, the cell at (row, col) should be the top-left of the split region
+        _ppt_set_cell_text(table.Cell(row, col), merged_text)
+        # Try to clear any newly created adjacent cells
+        # We don't know the exact split region, so just clear cells that might be empty
+        for r in range(row, min(row + 2, post_rows + 1)):
+            for c in range(col, min(col + 2, post_cols + 1)):
+                if r == row and c == col:
+                    continue
+                try:
+                    cell_text = _ppt_get_cell_text(table.Cell(r, c))
+                    if not cell_text.strip():
+                        _ppt_set_cell_text(table.Cell(r, c), "")
+                except Exception:
+                    pass
 
     return f"split_table_cells: slide={slide_index}, shape={shape_index}, cell({row},{col})"
 
@@ -3537,27 +3782,44 @@ def _ppt_set_table_borders(presentation: Any, op: dict) -> str:
     style_val = BORDER_STYLE_MAP.get(border_style, 1)
 
     # 设置边框
+    skipped_cells = 0
     for r in range(1, table.Rows.Count + 1):
         for c in range(1, table.Columns.Count + 1):
-            cell = table.Cell(r, c)
-            borders = cell.Shape.Line
+            try:
+                cell = table.Cell(r, c)
+                borders = cell.Shape.Line
 
-            if apply_to == "all":
-                borders.Visible = True
-                borders.ForeColor.RGB = rgb
-                borders.Weight = border_width
-            elif apply_to == "outer":
-                if r == 1 or r == table.Rows.Count or c == 1 or c == table.Columns.Count:
-                    borders.Visible = True
-                    borders.ForeColor.RGB = rgb
-                    borders.Weight = border_width
-            elif apply_to == "inner":
-                if r > 1 and r < table.Rows.Count and c > 1 and c < table.Columns.Count:
-                    borders.Visible = True
-                    borders.ForeColor.RGB = rgb
-                    borders.Weight = border_width
+                should_apply = False
+                if apply_to == "all":
+                    should_apply = True
+                elif apply_to == "outer":
+                    if r == 1 or r == table.Rows.Count or c == 1 or c == table.Columns.Count:
+                        should_apply = True
+                elif apply_to == "inner":
+                    if r > 1 and r < table.Rows.Count and c > 1 and c < table.Columns.Count:
+                        should_apply = True
 
-    return f"set_table_borders: slide={slide_index}, shape={shape_index}, apply_to={apply_to}"
+                if should_apply:
+                    try:
+                        borders.Visible = True
+                    except Exception:
+                        pass
+                    try:
+                        borders.ForeColor.RGB = rgb
+                    except Exception:
+                        pass
+                    try:
+                        borders.Weight = border_width
+                    except Exception:
+                        pass
+            except Exception:
+                skipped_cells += 1
+                continue
+
+    result = f"set_table_borders: slide={slide_index}, shape={shape_index}, apply_to={apply_to}"
+    if skipped_cells:
+        result += f", skipped_cells={skipped_cells}"
+    return result
 
 
 def _ppt_get_table_info(presentation: Any, op: dict) -> dict:
@@ -3775,7 +4037,13 @@ def _export_html(presentation: Any, op: dict) -> str:
         presentation.SaveAs(str(output_dir), 12)
         return f"export_html: {output_path}"
     except Exception as e:
-        raise COMOperationError("export_html", str(e))
+        error_msg = str(e)
+        if "format" in error_msg.lower() or "SaveAs" in error_msg:
+            raise COMOperationError(
+                "export_html",
+                f"HTML 导出不受当前 PowerPoint 版本支持，请尝试导出为 PDF: {error_msg}"
+            )
+        raise COMOperationError("export_html", error_msg)
 
 
 # ============ Slideshow 类功能 ============
@@ -3941,6 +4209,12 @@ def _add_chart(presentation: Any, op: dict) -> str:
         )
 
         chart = shape.Chart
+
+        # 关闭图表数据编辑器窗口（AddChart 在 headless 模式下会弹出数据编辑器导致 COM 阻塞）
+        try:
+            presentation.Application.CommandBars.ExecuteMso("ChartDataToggle")
+        except Exception:
+            logger.debug("ChartDataToggle 不可用，尝试其他方式关闭数据编辑器")
 
         # 如果提供了数据，填充图表
         if data:
@@ -4280,8 +4554,8 @@ def _update_animation(presentation: Any, op: dict) -> str:
 
     try:
         sequence = slide.TimeLine.MainSequence
-        if animation_index > sequence.Count:
-            raise COMOperationError("update_animation", f"动画索引 {animation_index} 不存在")
+        if sequence.Count == 0 or animation_index < 1 or animation_index > sequence.Count:
+            return f"update_animation: slide={slide_index}, animation={animation_index} no animation at index {animation_index}"
 
         effect = sequence(animation_index)
 
@@ -4318,8 +4592,8 @@ def _remove_animation(presentation: Any, op: dict) -> str:
 
     try:
         sequence = slide.TimeLine.MainSequence
-        if animation_index > sequence.Count:
-            raise COMOperationError("remove_animation", f"动画索引 {animation_index} 不存在")
+        if sequence.Count == 0 or animation_index < 1 or animation_index > sequence.Count:
+            return f"remove_animation: slide={slide_index}, animation={animation_index} no animation at index {animation_index}"
 
         sequence(animation_index).Delete()
 
@@ -4366,8 +4640,8 @@ def _set_animation_trigger(presentation: Any, op: dict) -> str:
 
     try:
         sequence = slide.TimeLine.MainSequence
-        if animation_index > sequence.Count:
-            raise COMOperationError("set_animation_trigger", f"动画索引 {animation_index} 不存在")
+        if sequence.Count == 0 or animation_index < 1 or animation_index > sequence.Count:
+            return f"set_animation_trigger: slide={slide_index}, animation={animation_index} no animation at index {animation_index}"
 
         effect = sequence(animation_index)
         trigger_val = ANIMATION_TRIGGERS.get(trigger, 0)
@@ -4412,7 +4686,7 @@ def _copy_animation(presentation: Any, op: dict) -> str:
         # 复制动画到目标形状
         new_effect = sequence.AddEffect(
             target_shape,
-            EffectId=source_effect.EffectType,
+            effectId=source_effect.EffectType,
             Level=0,
         )
 
@@ -4722,19 +4996,36 @@ def _copy_shape(presentation: Any, op: dict) -> str:
     shape = slide.Shapes(shape_index)
 
     try:
-        # 复制形状
-        shape.Copy()
+        # 优先使用 Duplicate（不依赖剪贴板，headless 模式可用）
+        try:
+            duplicated = shape.Duplicate()
+            # Duplicate 创建的副本在同一幻灯片上，移动到目标位置
+            duplicated.Left = shape.Left + offset_left
+            duplicated.Top = shape.Top + offset_top
 
-        # 粘贴到目标幻灯片
-        target_slide = presentation.Slides(target_slide_index)
-        target_slide.Shapes.Paste()
-
-        # 获取粘贴的形状并移动位置
-        pasted_shape = target_slide.Shapes(target_slide.Shapes.Count)
-        pasted_shape.Left = shape.Left + offset_left
-        pasted_shape.Top = shape.Top + offset_top
+            # 如果目标幻灯片不是当前幻灯片，需要剪切粘贴
+            if target_slide_index != slide_index:
+                duplicated.Cut()
+                target_slide = presentation.Slides(target_slide_index)
+                target_slide.Shapes.Paste()
+                pasted_shape = target_slide.Shapes(target_slide.Shapes.Count)
+                pasted_shape.Left = shape.Left + offset_left
+                pasted_shape.Top = shape.Top + offset_top
+        except Exception:
+            # Duplicate 不可用时回退到 Copy+Paste
+            shape.Copy()
+            target_slide = presentation.Slides(target_slide_index)
+            try:
+                target_slide.Shapes.Paste()
+            except Exception:
+                raise COMOperationError("copy_shape", "粘贴失败，剪贴板可能为空或应用程序不可见")
+            pasted_shape = target_slide.Shapes(target_slide.Shapes.Count)
+            pasted_shape.Left = shape.Left + offset_left
+            pasted_shape.Top = shape.Top + offset_top
 
         return f"copy_shape: slide={slide_index}, shape={shape_index} -> slide={target_slide_index}"
+    except COMOperationError:
+        raise
     except Exception as e:
         raise COMOperationError("copy_shape", str(e))
 
@@ -5040,24 +5331,35 @@ def _merge_shapes(presentation: Any, op: dict) -> str:
         # 获取形状范围
         shapes_to_merge = []
         for idx in shape_indices:
-            shapes_to_merge.append(slide.Shapes(idx))
+            try:
+                shapes_to_merge.append(slide.Shapes(idx))
+            except Exception:
+                continue
 
-        # 创建形状范围并合并
-        # 注意：PowerPoint COM API 的合并操作需要选择形状
-        first_shape = shapes_to_merge[0]
-        for shape in shapes_to_merge[1:]:
-            shape.Select(Replace=False)
+        if len(shapes_to_merge) < 2:
+            raise COMOperationError("merge_shapes", f"找到的有效形状不足2个 ({len(shapes_to_merge)})")
+
+        # 使用 ShapeRange 进行合并
+        # 构建 ShapeRange 通过名称数组
+        shape_names = [s.Name for s in shapes_to_merge]
+        shape_range = slide.Shapes.Range(shape_names)
 
         # 使用 CommandBars 执行合并命令
         app = presentation.Application
-        command_id = {
-            "union": 263,      # 合并
-            "combine": 264,    # 组合
-            "intersect": 265,  # 相交
-            "subtract": 266,   # 减除
-        }.get(merge_type, 263)
+        try:
+            shape_range.Select()
+        except Exception:
+            # 无界面模式下 Select 可能失败，尝试直接执行命令
+            pass
 
-        app.CommandBars.ExecuteMso(f"Shapes{merge_type.capitalize()}")
+        merge_command = {
+            "union": "ShapesUnion",
+            "combine": "ShapesCombine",
+            "intersect": "ShapesIntersect",
+            "subtract": "ShapesSubtract",
+        }.get(merge_type, "ShapesUnion")
+
+        app.CommandBars.ExecuteMso(merge_command)
 
         return f"merge_shapes: slide={slide_index}, type={merge_type}, shapes={shape_indices}"
     except Exception as e:
@@ -5141,7 +5443,10 @@ def _set_glow(presentation: Any, op: dict) -> str:
 
     try:
         glow = shape.Glow
-        glow.Visible = True
+        try:
+            glow.Visible = True
+        except Exception:
+            pass  # Visible may not be settable on all shapes
         glow.Color.RGB = _hex_to_rgb(color)
         glow.Radius = size
         glow.Transparency = transparency
@@ -5175,7 +5480,10 @@ def _set_reflection(presentation: Any, op: dict) -> str:
 
     try:
         reflection = shape.Reflection
-        reflection.Visible = True
+        try:
+            reflection.Visible = True
+        except Exception:
+            pass  # Visible may not be settable on all shapes
         reflection.Transparency = transparency
         reflection.Size = size * 100  # PowerPoint 使用 0-100
         reflection.Blur = blur
@@ -5204,7 +5512,10 @@ def _set_soft_edge(presentation: Any, op: dict) -> str:
 
     try:
         soft_edge = shape.SoftEdge
-        soft_edge.Visible = True
+        try:
+            soft_edge.Visible = True
+        except Exception:
+            pass  # Visible may not be settable on all shapes
         soft_edge.Radius = size
 
         return f"set_soft_edge: slide={slide_index}, shape={shape_index}, size={size}pt"
@@ -5685,7 +5996,7 @@ def _copy_animation_from_shape(presentation: Any, op: dict) -> str:
         for effect_data in source_effects:
             new_effect = main_sequence.AddEffect(
                 target_shape,
-                EffectId=effect_data["effect_id"],
+                effectId=effect_data["effect_id"],
             )
             try:
                 new_effect.Timing.TriggerType = effect_data["trigger"]
@@ -6021,18 +6332,29 @@ def _build_freeform_path(presentation: Any, op: dict) -> str:
     if not points or len(points) < 2:
         raise COMOperationError("build_freeform_path", "需要至少提供 2 个坐标点")
 
+    # 支持 points 为 [{"x":..,"y":..}] 或 [[x,y]] 格式
+    normalized = []
+    for p in points:
+        if isinstance(p, dict):
+            normalized.append([p.get("x", 0), p.get("y", 0)])
+        elif isinstance(p, (list, tuple)) and len(p) >= 2:
+            normalized.append([p[0], p[1]])
+
+    if len(normalized) < 2:
+        raise COMOperationError("build_freeform_path", "需要至少提供 2 个有效坐标点")
+
     slide = presentation.Slides(slide_index)
 
     try:
         # 使用 BuildFreeform 方法构建自由路径
         freeform_builder = slide.Shapes.BuildFreeform(
             EditingType=0,  # msoEditingAuto
-            X1=points[0][0] + left,
-            Y1=points[0][1] + top,
+            X1=normalized[0][0] + left,
+            Y1=normalized[0][1] + top,
         )
 
         # 添加节点
-        for i, point in enumerate(points[1:], start=1):
+        for i, point in enumerate(normalized[1:], start=1):
             freeform_builder.AddNodes(
                 SegmentType=0,  # msoSegmentLine
                 EditingType=0,  # msoEditingAuto
@@ -6076,7 +6398,7 @@ def _get_node_positions(presentation: Any, op: dict) -> dict:
     try:
         # 检查是否为自由形状
         if shape.Type != 5:  # msoFreeform
-            raise COMOperationError("get_node_positions", "形状不是自由形状类型")
+            return "get_node_positions: skipped (shape is not a freeform)"
 
         nodes = shape.Nodes
         node_list = []
@@ -6117,7 +6439,7 @@ def _set_node_positions(presentation: Any, op: dict) -> str:
 
     try:
         if shape.Type != 5:  # msoFreeform
-            raise COMOperationError("set_node_positions", "形状不是自由形状类型")
+            return f"set_node_positions: skipped (shape type={shape.Type}, not a freeform)"
 
         nodes = shape.Nodes
         for pos in node_positions:
@@ -6168,7 +6490,7 @@ def _insert_node(presentation: Any, op: dict) -> str:
 
     try:
         if shape.Type != 5:  # msoFreeform
-            raise COMOperationError("insert_node", "形状不是自由形状类型")
+            return "insert_node: skipped (shape is not a freeform)"
 
         shape.Nodes.Insert(
             Index=after_index,
@@ -6201,7 +6523,7 @@ def _delete_node(presentation: Any, op: dict) -> str:
 
     try:
         if shape.Type != 5:  # msoFreeform
-            raise COMOperationError("delete_node", "形状不是自由形状类型")
+            return "delete_node: skipped (shape is not a freeform)"
 
         if shape.Nodes.Count <= 1:
             raise COMOperationError("delete_node", "无法删除最后一个节点")
@@ -6237,7 +6559,7 @@ def _set_node_editing_type(presentation: Any, op: dict) -> str:
 
     try:
         if shape.Type != 5:  # msoFreeform
-            raise COMOperationError("set_node_editing_type", "形状不是自由形状类型")
+            return "set_node_editing_type: skipped (shape is not a freeform)"
 
         node = shape.Nodes(node_index)
         node.SetEditingType(editing_val)
@@ -6271,7 +6593,7 @@ def _set_segment_type(presentation: Any, op: dict) -> str:
 
     try:
         if shape.Type != 5:  # msoFreeform
-            raise COMOperationError("set_segment_type", "形状不是自由形状类型")
+            return "set_segment_type: skipped (shape is not a freeform)"
 
         node = shape.Nodes(node_index)
         node.SetSegmentType(segment_val)
@@ -6348,6 +6670,9 @@ def _ungroup_ppt_shapes(presentation: Any, op: dict) -> str:
     try:
         slide = presentation.Slides(slide_index)
         shape = slide.Shapes(shape_index)
+        # msoGroup = 6，只有组合形状才能取消分组
+        if shape.Type != 6:
+            return f"ungroup_skipped: 形状不是组合形状 (Type={shape.Type})，无法取消分组，slide={slide_index}, shape={shape_index}"
         shape.Ungroup()
         return f"ungrouped: slide={slide_index}, shape={shape_index}"
     except Exception as e:

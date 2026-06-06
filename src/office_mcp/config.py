@@ -51,9 +51,13 @@ def _load_visible_setting(app_name: str, default: bool) -> bool:
 def _load_settings() -> Settings:
     """Load settings from the environment."""
     shared_visible = _get_env_bool("OFFICE_MCP_VISIBLE", True)
+    explicit_allowed_dirs = os.environ.get("OFFICE_MCP_ALLOWED_DIRS")
     return Settings(
-        allowed_dirs=os.environ.get("OFFICE_MCP_ALLOWED_DIRS", os.environ.get("USERPROFILE", "")),
-        auto_discover_dirs=_get_env_bool("OFFICE_MCP_AUTO_DISCOVER_DIRS", False),
+        allowed_dirs=explicit_allowed_dirs or "",
+        auto_discover_dirs=_get_env_bool(
+            "OFFICE_MCP_AUTO_DISCOVER_DIRS",
+            explicit_allowed_dirs is None,
+        ),
         default_overwrite=_get_env_bool("OFFICE_MCP_DEFAULT_OVERWRITE", False),
         backup_before_edit=_get_env_bool("OFFICE_MCP_BACKUP_BEFORE_EDIT", True),
         visible=shared_visible,

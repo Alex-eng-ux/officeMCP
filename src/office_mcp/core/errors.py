@@ -69,8 +69,11 @@ class COMOperationError(OfficeMCPError):
 class OfficeNotInstalledError(OfficeMCPError):
     """Raised when Microsoft Office cannot be reached through COM."""
 
-    def __init__(self):
+    def __init__(self, detail: str = "", suggestion: str = ""):
+        message = "Microsoft Office does not appear to be installed or available through COM"
+        if detail:
+            message += f" - {detail}"
         super().__init__(
-            message="Microsoft Office does not appear to be installed or available through COM",
-            suggestion="Install Microsoft Office with Word, Excel, and PowerPoint available.",
+            message=message,
+            suggestion=suggestion or "Install Microsoft Office with Word, Excel, and PowerPoint available.",
         )

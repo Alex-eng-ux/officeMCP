@@ -3,9 +3,12 @@
 import logging
 import os
 import tempfile
+import time
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 from office_mcp.core.errors import COMOperationError
 from office_mcp.core.path_guard import validate_path
@@ -111,6 +114,106 @@ PROTECTION_TYPE_MAP = {
     "forms": 4,               # wdAllowOnlyFormFields
     "all": 5,                 # wdAllowOnlyReading
 }
+
+MAIL_MERGE_RETRYABLE_HRESULTS = {
+    -2147418111,  # RPC_E_CALL_REJECTED
+    -2147418110,  # RPC_E_SERVERCALL_RETRYLATER
+    -2147417848,  # RPC_E_DISCONNECTED
+    -2147417846,  # busy/system call failed variants
+    -2147023170,  # RPC_S_CALL_FAILED
+    -2147023174,  # RPC_S_SERVER_UNAVAILABLE
+}
+
+
+def _retry_word_mail_merge_call(stage: str, callable_obj, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+    """Retry Word COM calls that commonly fail while Office is busy."""
+    last_error = None
+    for _ in range(15):
+        try:
+            return callable_obj(*args, **kwargs)
+        except Exception as error:  # noqa: BLE001
+            last_error = error
+            error_text = str(error).lower()
+            hresult = getattr(error, "hresult", None)
+            if hresult not in MAIL_MERGE_RETRYABLE_HRESULTS and not any(
+                marker in error_text
+                for marker in (
+                    "call was rejected by callee",
+                    "rpc server is unavailable",
+                    "object invoked has disconnected",
+                    "remote procedure call failed",
+                    "server unavailable",
+                    "application is busy",
+                )
+            ):
+                raise COMOperationError("mail_merge", f"{stage} failed: {error}") from error
+            time.sleep(1.0)
+    raise COMOperationError("mail_merge", f"{stage} failed after retries: {last_error}")
+
+
+def _list_excel_sheet_names(data_source: Path) -> list[str]:
+    """Read visible worksheet names from an xlsx/xlsm workbook without Excel COM."""
+    try:
+        with zipfile.ZipFile(data_source) as archive:
+            with archive.open("xl/workbook.xml") as workbook_xml:
+                root = ElementTree.parse(workbook_xml).getroot()
+    except (FileNotFoundError, zipfile.BadZipFile, KeyError, ElementTree.ParseError):
+        return []
+
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    sheets: list[str] = []
+    for sheet in root.findall("main:sheets/main:sheet", namespace):
+        state = (sheet.attrib.get("state") or "").lower()
+        if state == "hidden":
+            continue
+        name = (sheet.attrib.get("name") or "").strip()
+        if name:
+            sheets.append(name)
+    return sheets
+
+
+def _build_excel_mail_merge_defaults(data_source: Path) -> dict[str, str | int]:
+    """Build deterministic defaults for Excel-backed mail merge sources."""
+    sheet_names = _list_excel_sheet_names(data_source)
+    if not sheet_names:
+        return {}
+
+    first_sheet = sheet_names[0].replace("]", "]]")
+    return {
+        "SubType": 16,  # wdMergeSubTypeOther
+        "Connection": (
+            f"Provider=Microsoft.ACE.OLEDB.12.0;User ID=Admin;Data Source={data_source};"
+            'Mode=Read;Extended Properties="HDR=YES;IMEX=1";'
+        ),
+        "SQLStatement": f"SELECT * FROM [{first_sheet}$]",
+    }
+
+
+def _build_mail_merge_open_kwargs(
+    data_source: str,
+    connection: str,
+    sql_statement: str,
+) -> dict[str, str | bool | int]:
+    """Build OpenDataSource kwargs with stable defaults for Excel sources."""
+    data_path = Path(data_source)
+    kwargs: dict[str, str | bool | int] = {
+        "Name": data_source,
+        "ConfirmConversions": False,
+        "ReadOnly": True,
+        "LinkToSource": False,
+        "AddToRecentFiles": False,
+        "Format": 0,  # wdOpenFormatAuto
+    }
+
+    if data_path.suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
+        kwargs.update(_build_excel_mail_merge_defaults(data_path))
+
+    if connection:
+        kwargs["Connection"] = connection
+    if sql_statement:
+        kwargs["SQLStatement"] = sql_statement
+
+    return kwargs
 
 
 def apply_word_operations(doc: Any, operations: list[dict]) -> list[dict]:
@@ -467,12 +570,17 @@ def _check_heading_hierarchy(doc: Any) -> list[dict]:
 def _add_paragraph(doc: Any, op: dict) -> str:
     """添加段落."""
     text = op.get("text", "")
-    style = op.get("style", "Normal")
+    style = op.get("style", "")
     alignment = op.get("alignment", "left")
 
     paragraph = doc.Content.Paragraphs.Add()
     paragraph.Range.Text = text
-    paragraph.Style = style
+    if style:
+        try:
+            paragraph.Style = style
+        except Exception:  # noqa: BLE001
+            # Style name may differ by locale (e.g. "Normal" vs "正文")
+            logger.debug("Style '%s' not found, using default", style)
 
     if alignment in ALIGNMENT_MAP:
         paragraph.Alignment = ALIGNMENT_MAP[alignment]
@@ -642,7 +750,7 @@ def _insert_at_bookmark(doc: Any, op: dict) -> str:
 
 def _insert_toc(doc: Any, op: dict) -> str:
     """插入目录."""
-    heading_levels = op.get("heading_levels", 3)
+    heading_levels = int(op.get("heading_levels", 3))
 
     # 在文档末尾插入目录
     doc.Content.InsertParagraphAfter()
@@ -654,19 +762,28 @@ def _insert_toc(doc: Any, op: dict) -> str:
     try:
         toc = doc.TablesOfContents.Add(
             Range=toc_range,
-            Level=heading_levels,
-            UseOutlineLevels=True,
-            IncludePageNumbers=True,
-            RightAlignPageNumbers=True,
-            Leader=2,
+            UseHeadingStyles=True,
+            UpperHeadingLevel=1,
+            LowerHeadingLevel=heading_levels,
+            UseFields=True,
         )
         return f"inserted_toc: {heading_levels} levels"
     except Exception:
-        toc_range.Text = "\n目录\n"
-        toc_code = ' TOC \\o "1-' + str(heading_levels) + '" \\h \\z \\u '
-        field = toc_range.Fields.Add(toc_range, Type=1, Code=toc_code)
-        field.Update()
-        return f"inserted_toc: {heading_levels} levels"
+        try:
+            toc = doc.TablesOfContents.Add(
+                toc_range,
+                True,
+                1,
+                heading_levels,
+                True,
+            )
+            return f"inserted_toc: {heading_levels} levels"
+        except Exception:
+            toc_range.Text = "\n目录\n"
+            toc_code = ' TOC \\o "1-' + str(heading_levels) + '" \\h \\z \\u '
+            field = toc_range.Fields.Add(toc_range, Type=1, Code=toc_code)
+            field.Update()
+            return f"inserted_toc: {heading_levels} levels"
 
 
 def _update_toc(doc: Any, op: dict) -> str:
@@ -683,10 +800,13 @@ def _apply_style(doc: Any, op: dict) -> str:
     range_spec = op.get("range", "all")
     style_name = op.get("style_name", "Normal")
 
-    if range_spec == "all":
-        doc.Content.Style = style_name
-    else:
-        doc.Range().Style = style_name
+    try:
+        if range_spec == "all":
+            doc.Content.Style = style_name
+        else:
+            doc.Range().Style = style_name
+    except Exception as e:
+        raise COMOperationError("apply_style", f"样式 '{style_name}' 不存在或无法应用: {e}") from e
     return f"applied_style: {style_name}"
 
 
@@ -1045,53 +1165,140 @@ def _mail_merge(doc: Any, op: dict) -> str:
         if any(kw in upper_sql for kw in dangerous):
             raise COMOperationError("mail_merge", "sql_statement 仅允许 SELECT 查询")
 
+    app = None
+    previous_alerts = None
+    previous_screen_updating = None
+    previous_confirm_conversions = None
+    merged_doc = None
+
     try:
+        app = doc.Application
+        previous_alerts = getattr(app, "DisplayAlerts", None)
+        previous_screen_updating = getattr(app, "ScreenUpdating", None)
+        options = getattr(app, "Options", None)
+        if options is not None:
+            previous_confirm_conversions = getattr(options, "ConfirmConversions", None)
+
+        if previous_alerts is not None:
+            app.DisplayAlerts = 0
+        if previous_screen_updating is not None:
+            app.ScreenUpdating = False
+        if previous_confirm_conversions is not None:
+            options.ConfirmConversions = False
+
+        # ── Phase 1: Snapshot pre-merge state ──
+        template_full_name = getattr(doc, "FullName", "")
+        template_name = getattr(doc, "Name", "")
+        pre_merge_doc_count = getattr(app.Documents, "Count", 0)
+        pre_merge_doc_names = set()
+        try:
+            for i in range(1, pre_merge_doc_count + 1):
+                d = app.Documents.Item(i)
+                pre_merge_doc_names.add(getattr(d, "FullName", ""))
+        except Exception:
+            logger.warning("Phase 1: could not enumerate pre-merge documents, falling back to count-only detection")
+        logger.info("Phase 1 complete: template=%s, pre_merge_doc_count=%d", template_full_name, pre_merge_doc_count)
+
+        # ── Phase 2: Bind data source ──
         mail_merge = doc.MailMerge
-        open_data_source_kwargs = {
-            "Name": data_source,
-            "ConfirmConversions": False,
-            "ReadOnly": True,
-            "LinkToSource": False,
-            "AddToRecentFiles": False,
-            "Format": 0,  # wdOpenFormatAuto
-        }
-        if connection:
-            open_data_source_kwargs["Connection"] = connection
-        if sql_statement:
-            open_data_source_kwargs["SQLStatement"] = sql_statement
+        open_data_source_kwargs = _build_mail_merge_open_kwargs(data_source, connection, sql_statement)
 
         if send_to_new_document and hasattr(mail_merge, "Destination"):
             mail_merge.Destination = 0  # wdSendToNewDocument
 
-        mail_merge.OpenDataSource(**open_data_source_kwargs)
-        app = doc.Application
-        template_full_name = getattr(doc, "FullName", "")
-        mail_merge.Execute(Pause=False)
+        logger.info("Phase 2: binding data source: %s", open_data_source_kwargs.get("Name"))
+        _retry_word_mail_merge_call("OpenDataSource", mail_merge.OpenDataSource, **open_data_source_kwargs)
+        logger.info("Phase 2 complete: data source bound")
 
+        # ── Phase 3: Execute merge ──
+        logger.info("Phase 3: executing mail merge")
+        try:
+            _retry_word_mail_merge_call("Execute", mail_merge.Execute, Pause=False)
+        except Exception as exec_err:
+            logger.error("Phase 3: Execute failed: %s", exec_err)
+            try:
+                post_fail_count = getattr(app.Documents, "Count", 0)
+                if post_fail_count > pre_merge_doc_count:
+                    for i in range(1, post_fail_count + 1):
+                        d = app.Documents.Item(i)
+                        d_full = getattr(d, "FullName", "")
+                        if d_full not in pre_merge_doc_names and d_full != template_full_name:
+                            logger.info("Phase 3 error recovery: closing new document %s without saving", d_full)
+                            d.Close(SaveChanges=False)
+            except Exception:
+                pass
+            raise
+
+        # Identify the result document
+        # Strategy 1: ActiveDocument differs from template
+        active_doc = _retry_word_mail_merge_call("ActiveDocument", getattr, app, "ActiveDocument", None)
+        if active_doc is not None:
+            active_full_name = getattr(active_doc, "FullName", "")
+            if active_doc is not doc and active_full_name != template_full_name:
+                merged_doc = active_doc
+                logger.info("Phase 3: identified result via ActiveDocument: %s", active_full_name)
+
+        # Strategy 2: enumerate Documents and find the new one
+        if merged_doc is None:
+            try:
+                post_merge_count = getattr(app.Documents, "Count", 0)
+                for i in range(1, post_merge_count + 1):
+                    d = app.Documents.Item(i)
+                    d_full = getattr(d, "FullName", "")
+                    if d_full not in pre_merge_doc_names and d_full != template_full_name:
+                        merged_doc = d
+                        logger.info("Phase 3: identified result via enumeration: %s", d_full)
+                        break
+            except Exception as enum_err:
+                logger.warning("Phase 3: document enumeration failed: %s", enum_err)
+
+        # Strategy 3: last resort — only template remains, merge may have failed
+        if merged_doc is None:
+            logger.error("Phase 3: could not identify a result document; template=%s", template_full_name)
+            raise COMOperationError("mail_merge", "mail merge did not produce a result document")
+
+        logger.info("Phase 3 complete: result document identified")
+
+        # ── Phase 4: Save result ──
         if output_path:
             output_file = Path(output_path)
             output_file.parent.mkdir(parents=True, exist_ok=True)
-            merged_doc = getattr(app, "ActiveDocument", None)
-            if merged_doc is None:
-                raise COMOperationError("mail_merge", "mail merge did not produce an active result document")
-
-            merged_full_name = getattr(merged_doc, "FullName", "")
-            if merged_doc is doc or (template_full_name and merged_full_name == template_full_name):
-                raise COMOperationError(
-                    "mail_merge",
-                    "mail merge did not switch to a new result document before save",
-                )
-
-            merged_doc.SaveAs(str(output_file))
-            merged_doc.Close(SaveChanges=False)
+            try:
+                _retry_word_mail_merge_call("SaveAs", merged_doc.SaveAs, str(output_file))
+                logger.info("Phase 4: saved result to %s", output_file)
+            except Exception as save_err:
+                logger.error("Phase 4: SaveAs failed: %s", save_err)
+                try:
+                    _retry_word_mail_merge_call("CloseMergedDocument", merged_doc.Close, SaveChanges=False)
+                except Exception:
+                    pass
+                merged_doc = None
+                raise
+            try:
+                _retry_word_mail_merge_call("CloseMergedDocument", merged_doc.Close, SaveChanges=False)
+            except Exception:
+                pass
+            merged_doc = None
             return f"mail_merge_executed_to_file: {output_file}"
 
         if send_to_new_document:
             return f"mail_merge_executed_to_new_document: {data_source}"
 
         return f"mail_merge_executed: {data_source}"
+    except COMOperationError:
+        raise
     except Exception as e:
-        raise COMOperationError("mail_merge", str(e))
+        raise COMOperationError("mail_merge", str(e)) from e
+    finally:
+        try:
+            if app is not None and previous_alerts is not None:
+                app.DisplayAlerts = previous_alerts
+            if app is not None and previous_screen_updating is not None:
+                app.ScreenUpdating = previous_screen_updating
+            if app is not None and previous_confirm_conversions is not None:
+                app.Options.ConfirmConversions = previous_confirm_conversions
+        except Exception:
+            pass
 
 
 # ===================== Document 类工具 =====================
@@ -1282,49 +1489,43 @@ def _compare_documents(doc: Any, op: dict) -> str:
     try:
         app = doc.Application
         if output_path:
-            result = app.CompareDocuments(
-                OriginalDocument=doc.FullName,
-                RevisedDocument=compare_path,
-                Destination=2,        # wdCompareDestinationNew
-                Granularity=1,         # wdGranularityWordLevel
-                CompareFormatting=True,
-                CompareCaseChanges=True,
-                CompareWhitespace=False,
-                CompareTables=True,
-                CompareHeaders=True,
-                CompareFootnotes=True,
-                CompareTextboxes=True,
-                CompareFields=True,
-                CompareComments=True,
-                CompareMoves=True,
-                RevisedAuthor="",
-                IgnoreAllComparisonWarnings=True,
-            )
+            # 打开修订文档以获取 Document COM 对象
+            revised_doc = app.Documents.Open(compare_path)
             try:
-                result.SaveAs(output_path)
-                result.Close()
-                return f"compared_and_saved: {output_path}"
-            except Exception:
-                return f"compared_to_new_document (output_path 可能需要手动保存)"
+                result = app.CompareDocuments(
+                    OriginalDocument=doc,
+                    RevisedDocument=revised_doc,
+                    Destination=2,        # wdCompareDestinationNew
+                    Granularity=1,         # wdGranularityWordLevel
+                    CompareFormatting=True,
+                    CompareCaseChanges=True,
+                    CompareWhitespace=False,
+                    CompareTables=True,
+                    CompareHeaders=True,
+                    CompareFootnotes=True,
+                    CompareTextboxes=True,
+                    CompareFields=True,
+                    CompareComments=True,
+                    CompareMoves=True,
+                    RevisedAuthor="",
+                    IgnoreAllComparisonWarnings=True,
+                )
+                try:
+                    result.SaveAs(output_path)
+                    result.Close()
+                    return f"compared_and_saved: {output_path}"
+                except Exception:
+                    return f"compared_to_new_document (output_path 可能需要手动保存)"
+            finally:
+                revised_doc.Close(SaveChanges=False)
         else:
-            app.CompareDocuments(
-                OriginalDocument=doc.FullName,
-                RevisedDocument=compare_path,
-                Destination=0,         # wdCompareDestinationOriginal
-                Granularity=1,
-                CompareFormatting=True,
-                CompareCaseChanges=True,
-                CompareWhitespace=False,
-                CompareTables=True,
-                CompareHeaders=True,
-                CompareFootnotes=True,
-                CompareTextboxes=True,
-                CompareFields=True,
-                CompareComments=True,
-                CompareMoves=True,
-                RevisedAuthor="",
-                IgnoreAllComparisonWarnings=True,
-            )
+            # 使用 doc.Compare 方法，直接传入文件路径即可
+            # Word COM 的 Compare 方法只接受 Name 和可选的 AuthorTarget/CompareTarget 参数
+            try:
+                doc.Compare(Name=compare_path)
+            except Exception:
+                # 某些 Word 版本不接受关键字参数，尝试位置参数
+                doc.Compare(compare_path)
             return f"compared: {compare_path}"
     except Exception as e:
         raise COMOperationError("compare_documents", str(e))
@@ -1544,7 +1745,13 @@ def _remove_bullet(doc: Any, op: dict) -> str:
     """
     index = op.get("index", 1)
     p = _get_paragraph_by_index(doc, index)
-    p.Range.ListFormat.RemoveNumbers(NumberType=0)  # wdNumberParagraph = 0
+    try:
+        p.Range.ListFormat.RemoveNumbers(NumberType=1)  # wdNumberListNum = 1
+    except Exception:
+        try:
+            p.Range.ListFormat.RemoveNumbers()
+        except Exception as e:
+            raise COMOperationError("remove_bullet", str(e))
     return f"removed_bullet: {index}"
 
 
@@ -1659,7 +1866,6 @@ def _get_table_info(doc: Any, op: dict) -> dict:
         "rows": t.Rows.Count,
         "columns": t.Columns.Count,
         "style": style_name,
-        "is_horizontal": t.Rows(1).Orientation if t.Rows.Count > 0 else 0,
     }
 
 
@@ -1889,11 +2095,33 @@ def _set_table_style(doc: Any, op: dict) -> str:
         raise COMOperationError("set_table_style", "style_name 不能为空")
 
     t = _get_table_by_index(doc, table_index)
-    try:
-        t.Style = style_name
-        return f"set_table_style: table={table_index} style={style_name}"
-    except Exception as e:
-        raise COMOperationError("set_table_style", str(e))
+
+    # 样式名称在不同语言的 Word 中可能不同，尝试多个备选名称
+    style_alternatives = [style_name]
+    _TABLE_STYLE_ALIASES = {
+        "Table Grid": ["网格型", "Table Grid"],
+        "Light List": ["浅色列表", "Light List"],
+        "Light Shading": ["浅色底纹", "Light Shading"],
+        "Medium Shading 1": ["中等底纹 1", "Medium Shading 1"],
+        "Medium Shading 2": ["中等底纹 2", "Medium Shading 2"],
+        "Medium List 1": ["中等列表 1", "Medium List 1"],
+    }
+    if style_name in _TABLE_STYLE_ALIASES:
+        style_alternatives = _TABLE_STYLE_ALIASES[style_name]
+
+    last_error = None
+    for alt_name in style_alternatives:
+        try:
+            t.Style = alt_name
+            return f"set_table_style: table={table_index} style={alt_name}"
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise COMOperationError(
+        "set_table_style",
+        f"设置表格样式失败，已尝试 {style_alternatives}，均不成功: {last_error}",
+    )
 
 
 # ===================== Styles 类工具 =====================
@@ -1917,16 +2145,15 @@ def _resolve_color(color: Any) -> int:
     if isinstance(color, int):
         return color
     if isinstance(color, str):
-        if color.startswith("#"):
-            try:
-                hex_str = color.lstrip("#")
-                if len(hex_str) == 6:
-                    r = int(hex_str[0:2], 16)
-                    g = int(hex_str[2:4], 16)
-                    b = int(hex_str[4:6], 16)
-                    return r + (g << 8) + (b << 16)  # BGR
-            except ValueError:
-                pass
+        hex_str = color.lstrip("#")
+        try:
+            if len(hex_str) == 6:
+                r = int(hex_str[0:2], 16)
+                g = int(hex_str[2:4], 16)
+                b = int(hex_str[4:6], 16)
+                return r + (g << 8) + (b << 16)  # BGR
+        except ValueError:
+            pass
         key = color.lower().strip()
         if key in WD_COLOR_MAP:
             return WD_COLOR_MAP[key]
@@ -2155,10 +2382,27 @@ def _add_section_break(doc: Any, op: dict) -> str:
         )
 
     try:
-        range_end = doc.Content
-        range_end.Collapse(Direction=0)  # wdCollapseEnd
-        range_end.InsertBreak(Type=SECTION_BREAK_MAP[break_type])
-        return f"added_section_break: {break_type}"
+        position = op.get("position", "end")
+        if position == "start":
+            # 在文档开头插入分节符
+            rng = doc.Range(0, 0)
+            rng.InsertBreak(Type=SECTION_BREAK_MAP[break_type])
+        elif position == "middle":
+            # 在第一个段落处插入分节符（不折叠，确保创建新 Section）
+            doc.Paragraphs(1).Range.InsertBreak(Type=SECTION_BREAK_MAP[break_type])
+        else:
+            # 默认在文档末尾插入分节符
+            # 注意：在文档末尾插入分节符可能不会增加 Section 数量
+            # 改为在最后一个段落之前插入，确保创建新 Section
+            if doc.Paragraphs.Count > 1:
+                rng = doc.Paragraphs(doc.Paragraphs.Count - 1).Range
+                rng.Collapse(Direction=0)  # wdCollapseEnd
+                rng.InsertBreak(Type=SECTION_BREAK_MAP[break_type])
+            else:
+                rng = doc.Content
+                rng.Collapse(Direction=0)  # wdCollapseEnd
+                rng.InsertBreak(Type=SECTION_BREAK_MAP[break_type])
+        return f"added_section_break: {break_type} (sections={doc.Sections.Count})"
     except Exception as e:
         raise COMOperationError("add_section_break", str(e))
 

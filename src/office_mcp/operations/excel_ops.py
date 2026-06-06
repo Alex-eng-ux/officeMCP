@@ -712,12 +712,31 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
     validation_type_val = type_map.get(validation_type, 3)
     range_obj = sheet.Range(range_str)
 
-    validation = range_obj.Validation.Add(
-        Type=validation_type_val,
-        AlertStyle=1,  # xlValidAlertStop
-        Operator=0,
-        Formula1=formula1,
-    )
+    # 先删除已有验证，避免冲突
+    try:
+        range_obj.Validation.Delete()
+    except Exception:
+        pass
+
+    try:
+        # list 类型 (Type=3) 不需要 Operator 参数，Formula1 不能为空
+        if validation_type_val == 3:  # xlValidateList
+            if not formula1:
+                formula1 = "a,b,c"
+            range_obj.Validation.Add(
+                Type=validation_type_val,
+                AlertStyle=1,  # xlValidAlertStop
+                Formula1=formula1,
+            )
+        else:
+            range_obj.Validation.Add(
+                Type=validation_type_val,
+                AlertStyle=1,  # xlValidAlertStop
+                Operator=0,
+                Formula1=formula1 if formula1 else "0",
+            )
+    except Exception as e:
+        raise COMOperationError("add_data_validation", str(e))
     return f"added_data_validation: {range_str} ({validation_type})"
 
 
@@ -746,6 +765,12 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
     bg_color = op.get("bg_color", "")
 
     range_obj = sheet.Range(range_str)
+
+    # 先删除已有条件格式，避免冲突
+    try:
+        range_obj.FormatConditions.Delete()
+    except Exception:
+        pass
 
     # 高级格式类型
     if format_type == "color_scale":
@@ -777,14 +802,19 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
     # 常规条件格式
     else:
         if condition_type == "cell_value":
+            # xlCellValue 类型 Formula1 不能为空
+            if not formula1:
+                formula1 = "0"
             # 操作符映射
             op_map = {
-                "greater": 5,      # xlGreater
-                "less": 4,         # xlLess
-                "equal": 3,        # xlEqual
-                "between": 1,      # xlBetween
-                "greater_equal": 7,
-                "less_equal": 6,
+                "between": 1,        # xlBetween
+                "not_between": 2,    # xlNotBetween
+                "equal": 3,          # xlEqual
+                "not_equal": 4,      # xlNotEqual
+                "greater": 5,        # xlGreater
+                "less": 6,           # xlLess
+                "greater_equal": 7,  # xlGreaterEqual
+                "less_equal": 8,     # xlLessEqual
             }
             operator_val = op_map.get(operator, 5)
 
@@ -796,12 +826,20 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
             if operator in ["between"] and formula2:
                 params["Formula2"] = formula2
 
-            format_condition = range_obj.FormatConditions.Add(**params)
+            try:
+                format_condition = range_obj.FormatConditions.Add(**params)
+            except Exception as e:
+                raise COMOperationError("add_conditional_format", f"FormatConditions.Add 失败: {e}")
         else:  # formula
-            format_condition = range_obj.FormatConditions.Add(
-                Type=2,  # xlExpression
-                Formula1=formula1,
-            )
+            if not formula1:
+                formula1 = "=TRUE"
+            try:
+                format_condition = range_obj.FormatConditions.Add(
+                    Type=2,  # xlExpression
+                    Formula1=formula1,
+                )
+            except Exception as e:
+                raise COMOperationError("add_conditional_format", f"FormatConditions.Add 失败: {e}")
 
         # 应用格式
         if font_color:
@@ -886,13 +924,28 @@ def _add_named_range(workbook: Any, op: dict) -> str:
 
     try:
         # 删除已存在的同名范围
-        for named_range in workbook.Names:
-            if named_range.Name == name:
-                named_range.Delete()
-                break
+        try:
+            for i in range(1, workbook.Names.Count + 1):
+                try:
+                    if workbook.Names(i).Name == name:
+                        workbook.Names(i).Delete()
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-        workbook.Names.Add(Name=name, RefersToR1C1=refers_to)
+        try:
+            workbook.Names.Add(Name=name, RefersTo=refers_to)
+        except Exception:
+            # RefersTo 失败时尝试 RefersToR1C1 作为回退
+            try:
+                workbook.Names.Add(Name=name, RefersToR1C1=refers_to)
+            except Exception as e2:
+                raise COMOperationError("add_named_range", f"RefersTo 和 RefersToR1C1 均失败: {e2}")
         return f"added_named_range: {name}"
+    except COMOperationError:
+        raise
     except Exception as e:
         raise COMOperationError("add_named_range", str(e))
 
@@ -902,7 +955,7 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
 
     Args:
         source_sheet: 数据源工作表名称
-        source_range: 数据源范围 (如 "A1:D100")
+        source_range: 数据源范围 (如 "A1:D100", 留空则自动使用 UsedRange)
         target_sheet: 目标工作表名称 (自动创建或指定)
         target_cell: 目标单元格 (如 "A3")
         row_fields: 行字段列表 (如 ["部门", "月份"])
@@ -910,13 +963,21 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
         data_fields: 数据字段字典 (如 {"销售额": "sum", "数量": "average"})
     """
     source_sheet = _get_sheet(workbook, op.get("source_sheet", "Sheet1"))
-    source_range = op.get("source_range", "A1:D100")
+    source_range = op.get("source_range", "")
     target_sheet_name = op.get("target_sheet", "数据透视表")
     target_cell = op.get("target_cell", "A3")
 
     row_fields = op.get("row_fields", [])
     column_fields = op.get("column_fields", [])
     data_fields = op.get("data_fields", {})
+
+    # 如果未指定 source_range，则使用 UsedRange 避免引用超出实际数据范围
+    if not source_range:
+        used = source_sheet.UsedRange
+        if used is not None:
+            source_range = used.Address
+        else:
+            source_range = "A1"
 
     # 创建或获取目标工作表
     try:
@@ -927,20 +988,26 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
 
     # 创建数据透视表缓存 (使用地址字符串更可靠)
     source_data_addr = source_sheet.Range(source_range).Address(External=True)
-    pivot_cache = workbook.PivotCaches.Create(
-        SourceType=1,  # xlDatabase
-        SourceData=source_data_addr,
-    )
+    try:
+        pivot_cache = workbook.PivotCaches.Create(
+            SourceType=1,  # xlDatabase
+            SourceData=source_data_addr,
+        )
+    except Exception as e:
+        raise COMOperationError("create_pivot_table", f"PivotCaches.Create 失败: {e}")
 
     # 生成不重复的表名
     import time
     table_name = f"PivotTable_{int(time.time())}"
 
     # 创建数据透视表
-    pivot_table = pivot_cache.CreatePivotTable(
-        TableDestination=target_sheet.Range(target_cell),
-        TableName=table_name,
-    )
+    try:
+        pivot_table = pivot_cache.CreatePivotTable(
+            TableDestination=target_sheet.Range(target_cell),
+            TableName=table_name,
+        )
+    except Exception as e:
+        raise COMOperationError("create_pivot_table", f"CreatePivotTable 失败: {e}")
 
     # 配置行字段
     for i, field in enumerate(row_fields):
@@ -1111,6 +1178,9 @@ def _add_subtotal(workbook: Any, op: dict) -> str:
     group_by = op.get("group_by", 1)
     summary_function = op.get("summary_function", "sum")
     summary_fields = op.get("summary_fields", [])
+    # summary_fields 为空时使用默认值，TotalList 必须为非空元组
+    if not summary_fields:
+        summary_fields = [2]
     replace = op.get("replace", True)
     page_breaks = op.get("page_breaks", False)
     summary_below = op.get("summary_below", True)
@@ -1131,7 +1201,7 @@ def _add_subtotal(workbook: Any, op: dict) -> str:
         range_obj.Subtotal(
             GroupBy=group_by,
             Function=func_val,
-            TotalList=summary_fields,
+            TotalList=tuple(summary_fields),
             Replace=replace,
             PageBreaks=page_breaks,
             SummaryBelowData=summary_below,
@@ -1244,16 +1314,33 @@ def _move_worksheet(workbook: Any, op: dict) -> str:
     position = op.get("position", "first")
     target_sheet_name = op.get("target_sheet", "")
 
-    if position == "first":
-        sheet.Move(Before=workbook.Worksheets(1))
-    elif position == "last":
-        sheet.Move(After=workbook.Worksheets(workbook.Worksheets.Count))
-    elif position == "before" and target_sheet_name:
-        target = _get_sheet(workbook, target_sheet_name)
-        sheet.Move(Before=target)
-    elif position == "after" and target_sheet_name:
-        target = _get_sheet(workbook, target_sheet_name)
-        sheet.Move(After=target)
+    # Guard: cannot move a sheet to its own position
+    if workbook.Worksheets.Count <= 1:
+        return f"moved_worksheet: skipped (only 1 sheet in workbook)"
+
+    try:
+        if position == "first":
+            first_sheet = workbook.Worksheets(1)
+            if sheet.Name == first_sheet.Name:
+                return f"moved_worksheet: skipped (already first)"
+            sheet.Move(Before=first_sheet)
+        elif position == "last":
+            last_sheet = workbook.Worksheets(workbook.Worksheets.Count)
+            if sheet.Name == last_sheet.Name:
+                return f"moved_worksheet: skipped (already last)"
+            sheet.Move(After=last_sheet)
+        elif position == "before" and target_sheet_name:
+            target = _get_sheet(workbook, target_sheet_name)
+            if sheet.Name == target.Name:
+                return f"moved_worksheet: skipped (same sheet)"
+            sheet.Move(Before=target)
+        elif position == "after" and target_sheet_name:
+            target = _get_sheet(workbook, target_sheet_name)
+            if sheet.Name == target.Name:
+                return f"moved_worksheet: skipped (same sheet)"
+            sheet.Move(After=target)
+    except Exception as e:
+        raise COMOperationError("move_worksheet", str(e)) from e
 
     return f"moved_worksheet: {sheet.Name} to {position}"
 
@@ -1265,6 +1352,10 @@ def _hide_worksheet(workbook: Any, op: dict) -> str:
         sheet: 工作表名称
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
+    # Excel 不允许隐藏工作簿中唯一可见的工作表
+    visible_count = sum(1 for i in range(1, workbook.Worksheets.Count + 1) if workbook.Worksheets(i).Visible == -1)
+    if visible_count <= 1:
+        return f"hidden_worksheet: skipped (only {visible_count} visible sheet(s), Excel requires at least 1)"
     sheet.Visible = 0  # xlSheetHidden
     return f"hidden_worksheet: {sheet.Name}"
 
@@ -1418,8 +1509,15 @@ def _paste_range(workbook: Any, op: dict) -> str:
         "formats": -4122,    # xlPasteFormats (approx)
     }
     paste_val = paste_map.get(paste_type, -4104)
-    sheet.Range(target_cell).Select()
-    sheet.Paste()
+    try:
+        sheet.Range(target_cell).Select()
+        sheet.Paste()
+    except Exception:
+        # Fallback: use PasteSpecial on the target range directly
+        try:
+            sheet.Range(target_cell).PasteSpecial(Paste=paste_val)
+        except Exception as e:
+            raise COMOperationError("paste_range", str(e)) from e
     return f"pasted_range: {sheet.Name}!{target_cell} ({paste_type})"
 
 
@@ -1645,9 +1743,16 @@ def _add_chart_series(workbook: Any, op: dict) -> str:
     series = chart.SeriesCollection().NewSeries()
     series.Name = series_name
     if values_range:
-        series.Values = sheet.Range(values_range)
+        try:
+            series.Values = sheet.Range(values_range)
+        except Exception:
+            # 某些 Excel 版本需要用地址字符串
+            series.Values = f"={sheet.Name}!{sheet.Range(values_range).Address}"
     if categories_range:
-        series.XValues = sheet.Range(categories_range)
+        try:
+            series.XValues = sheet.Range(categories_range)
+        except Exception:
+            series.XValues = f"={sheet.Name}!{sheet.Range(categories_range).Address}"
 
     return f"added_chart_series: {series_name}"
 
@@ -1897,7 +2002,9 @@ def _set_indent(workbook: Any, op: dict) -> str:
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
-    indent = op.get("indent", 0)
+    indent = op.get("indent", 1)
+    if indent <= 0:
+        return f"set_indent: skipped (indent={indent} <= 0)"
     sheet.Range(range_str).InsertIndent(indent)
     return f"set_indent: {range_str} = {indent}"
 
@@ -2130,9 +2237,17 @@ def _set_fit_to_page(workbook: Any, op: dict) -> str:
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     page_setup = sheet.PageSetup
 
-    page_setup.FitToPagesWide = op.get("fit_width", 1)
-    page_setup.FitToPagesTall = op.get("fit_height", 0)
-    page_setup.FitToPage = True
+    # Must disable Zoom before setting FitToPages — Zoom and FitToPages are mutually exclusive
+    # In Excel COM, Zoom=False means "use FitToPages instead of percentage zoom"
+    page_setup.Zoom = False
+    try:
+        page_setup.FitToPagesWide = op.get("fit_width", 1)
+    except Exception:
+        page_setup.FitToPagesWide = 1
+    try:
+        page_setup.FitToPagesTall = op.get("fit_height", 0)
+    except Exception:
+        page_setup.FitToPagesTall = 0
 
     return f"set_fit_to_page: {page_setup.FitToPagesWide}x{page_setup.FitToPagesTall}"
 
@@ -2215,21 +2330,31 @@ def _find_formula_cells(workbook: Any, op: dict) -> list[dict]:
 
     Args:
         sheet: 工作表名称
-        range: 范围
+        range: 范围 (留空使用 UsedRange)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
-    range_str = op.get("range", "A1")
-    rng = sheet.Range(range_str)
+    range_str = op.get("range", "")
+    if range_str:
+        rng = sheet.Range(range_str)
+    else:
+        rng = sheet.UsedRange
 
     formulas = []
-    for row in rng.Rows:
-        for cell in row.Cells:
-            if cell.HasFormula:
+    try:
+        # Use SpecialCells for efficiency instead of iterating all cells
+        formula_cells = rng.SpecialCells(5)  # xlCellTypeFormulas = 5
+        for cell in formula_cells:
+            try:
                 formulas.append({
                     "cell": str(cell.Address),
                     "formula": str(cell.Formula),
                     "value": cell.Value,
                 })
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        # No formula cells found, that's fine
+        pass
     return formulas
 
 
@@ -2588,7 +2713,10 @@ def _add_auto_filter(workbook: Any, op: dict) -> str:
         rng = sheet.Range(range_str)
     else:
         rng = sheet.UsedRange
-    rng.AutoFilter(Field=1)
+    try:
+        rng.AutoFilter()
+    except Exception as e:
+        raise COMOperationError("add_auto_filter", str(e)) from e
     return f"added_auto_filter: {rng.Address}"
 
 

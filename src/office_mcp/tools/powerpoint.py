@@ -236,7 +236,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
                     if img_path:
                         validate_path(img_path)
 
-            presentation = office_manager.get_document(path)
+            presentation = office_manager.ensure_document(path, activate=True)
             results = apply_ppt_operations(presentation, operations)
             return {"file_path": file_path, "results": results}
         except OfficeMCPError as e:
@@ -294,7 +294,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_animation(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -320,7 +320,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_transition(ppt, {"slide_index": slide_index, "transition_type": transition_type, "duration": duration})
             return f"已设置转换效果: slide {slide_index}"
         except OfficeMCPError as e:
@@ -338,7 +338,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_section(ppt, {"section_name": section_name, "after_slide_index": after_slide_index})
             return f"已添加分节: {section_name}"
         except OfficeMCPError as e:
@@ -359,7 +359,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _format_shape(ppt, {"slide_index": slide_index, "shape_index": shape_index, "fill_color": fill_color, "line_color": line_color, "line_width": line_width})
             return f"已格式化形状: slide {slide_index}"
         except OfficeMCPError as e:
@@ -377,7 +377,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_slide_number(ppt, {"slide_index": slide_index, "show": show})
             return f"已设置幻灯片编号: slide {slide_index}"
         except OfficeMCPError as e:
@@ -510,7 +510,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _check_typography(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -4268,7 +4268,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=True)
             result = _ppt_merge_table_cells(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4300,7 +4300,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=True)
             result = _ppt_split_table_cells(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,

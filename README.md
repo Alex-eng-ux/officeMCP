@@ -236,8 +236,8 @@ These phrases tend to produce better presentation results:
 
 | Variable | Description | Default |
 |---|---|---|
-| `OFFICE_MCP_ALLOWED_DIRS` | Allowed directories, separated by `;` | `%USERPROFILE%` |
-| `OFFICE_MCP_AUTO_DISCOVER_DIRS` | Merge detected workspace roots into the allowlist when explicit roots are configured | `false` |
+| `OFFICE_MCP_ALLOWED_DIRS` | Allowed directories, separated by `;` | unset by default; falls back to detected workspace and user-facing directories |
+| `OFFICE_MCP_AUTO_DISCOVER_DIRS` | Merge detected workspace roots into the allowlist when explicit roots are configured | `true` when `OFFICE_MCP_ALLOWED_DIRS` is unset, otherwise `false` |
 | `OFFICE_MCP_DEFAULT_OVERWRITE` | Allow overwrite by default | `false` |
 | `OFFICE_MCP_BACKUP_BEFORE_EDIT` | Auto-backup before editing | `true` |
 | `OFFICE_MCP_VISIBLE` | Shared visibility fallback for Office windows | `true` |

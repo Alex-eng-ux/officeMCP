@@ -203,7 +203,7 @@ def register_word_tools(mcp: FastMCP) -> None:
                     if img_path:
                         validate_path(img_path)
 
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=True)
             results = apply_word_operations(doc, operations)
             return {"file_path": file_path, "results": results}
         except OfficeMCPError as e:
@@ -254,7 +254,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             result = _apply_style(doc, {"style_name": style_name, "range": range_spec})
             return f"已应用样式: {style_name}"
         except OfficeMCPError as e:
@@ -274,7 +274,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             result = _create_style(doc, {"name": name, "font_name": font_name, "font_size": font_size, "bold": bold, "italic": italic})
             return f"已创建样式: {name}"
         except OfficeMCPError as e:
@@ -289,7 +289,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             styles = _list_styles(doc, {})
             return {"styles": styles, "count": len(styles)}
         except OfficeMCPError as e:
@@ -305,7 +305,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             result = _add_bookmark(doc, {"name": name})
             return f"已添加书签: {name}"
         except OfficeMCPError as e:
@@ -321,7 +321,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             result = _goto_bookmark(doc, {"name": name})
             return f"已跳转到书签: {name}"
         except OfficeMCPError as e:
@@ -337,7 +337,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             result = _delete_bookmark(doc, {"name": name})
             return f"已删除书签: {name}"
         except OfficeMCPError as e:
@@ -354,7 +354,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             result = _insert_at_bookmark(doc, {"name": name, "text": text})
             return f"已在书签 {name} 位置插入文本"
         except OfficeMCPError as e:
@@ -371,7 +371,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             _set_header(doc, {"text": text, "section": section})
             return f"已设置页眉: {text[:50]}"
         except OfficeMCPError as e:
@@ -388,7 +388,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             _set_footer(doc, {"text": text, "section": section})
             return f"已设置页脚: {text[:50]}"
         except OfficeMCPError as e:
@@ -405,7 +405,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             _add_page_number(doc, {"location": location, "format": format})
             return f"已在 {location} 添加页码"
         except OfficeMCPError as e:
@@ -680,7 +680,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             issues = _check_typography(doc, {})
             return {
                 "file_path": file_path,
@@ -1635,7 +1635,7 @@ def register_word_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            doc = office_manager.get_document(path)
+            doc = office_manager.ensure_document(path, activate=False)
             tables = _list_tables(doc, {})
             return {"file_path": file_path, "count": len(tables), "tables": tables}
         except OfficeMCPError as e:

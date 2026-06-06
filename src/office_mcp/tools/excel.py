@@ -112,6 +112,12 @@ from office_mcp.operations.excel_ops import (
 )
 
 
+def _ensure_workbook(file_path: str, *, activate: bool = False):
+    """Validate the path and return a recoverable workbook handle."""
+    path = validate_path(file_path)
+    return office_manager.ensure_document(path, activate=activate)
+
+
 def register_excel_tools(mcp: FastMCP) -> None:
     """注册 Excel 相关工具."""
 
@@ -172,8 +178,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         - add_subtotal: 添加分类汇总
         """
         try:
-            path = validate_path(file_path)
-            workbook = office_manager.get_document(path)
+            workbook = _ensure_workbook(file_path, activate=True)
             results = apply_excel_operations(workbook, operations)
             return {"file_path": file_path, "results": results}
         except OfficeMCPError as e:
@@ -226,7 +231,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_data_validation(wb, {"sheet": sheet, "range": range, "type": validation_type, "formula1": formula1})
             return f"已添加数据验证: {range}"
         except OfficeMCPError as e:
@@ -261,7 +266,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_conditional_format(wb, {
                 "sheet": sheet,
                 "range": range,
@@ -304,7 +309,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_slicer(wb, {
                 "target_sheet": target_sheet,
                 "pivot_sheet": pivot_sheet,
@@ -346,7 +351,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_subtotal(wb, {
                 "sheet": sheet,
                 "range": range,
@@ -372,7 +377,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _merge_cells(wb, {"sheet": sheet, "range": range})
             return f"已合并单元格: {range}"
         except OfficeMCPError as e:
@@ -392,7 +397,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_borders(wb, {"sheet": sheet, "range": range, "border_type": border_type, "style": style, "color": color})
             return f"已设置边框: {range}"
         except OfficeMCPError as e:
@@ -518,8 +523,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
             包含问题列表的字典
         """
         try:
-            path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = _ensure_workbook(file_path)
             issues = _check_typography(wb, {"sheet": sheet})
             return {
                 "file_path": file_path,
@@ -546,8 +550,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
             file_path: 工作簿路径 (绝对路径)
         """
         try:
-            path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = _ensure_workbook(file_path)
             sheets = _list_worksheets(wb, {})
             return {"file_path": file_path, "count": len(sheets), "worksheets": sheets}
         except OfficeMCPError as e:
@@ -562,8 +565,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
             sheet: 工作表名称
         """
         try:
-            path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = _ensure_workbook(file_path)
             info = _get_worksheet_info(wb, {"sheet": sheet})
             return {"file_path": file_path, **info}
         except OfficeMCPError as e:
@@ -733,8 +735,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
             sheet: 工作表名称
         """
         try:
-            path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = _ensure_workbook(file_path)
             result = _list_used_range(wb, {"sheet": sheet})
             return {"file_path": file_path, "sheet": sheet, **result}
         except OfficeMCPError as e:
@@ -1746,8 +1747,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
             sheet: 工作表名称 (可选, 留空列出所有)
         """
         try:
-            path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = _ensure_workbook(file_path)
             result = _list_tables(wb, {"sheet": sheet})
             import json
             return json.dumps(result, ensure_ascii=False, default=str)
