@@ -15,9 +15,12 @@ dist/
 
 .pytest_cache/
 .tmp-pytest/
+.tmp-pydeps/
 .ruff_cache/
 .trae/
 .vs/
+__pycache__/
+tests/__pycache__/
 
 test_output/
 _mergework/

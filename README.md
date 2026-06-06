@@ -305,6 +305,14 @@ python test_ppt_advanced.py
 
 These scripts are still useful for interactive COM validation, but they are manual smoke checks rather than CI-grade regression tests. They require Windows and a local Microsoft Office installation.
 
+### Supplemental project docs
+
+- Implementation workflow notes: [docs/implementation-workflow.md](D:/FakeC/MCP/offiiceMCP/docs/implementation-workflow.md)
+- Third-version design notes: [docs/third-version-design.md](D:/FakeC/MCP/offiiceMCP/docs/third-version-design.md)
+- Handoff reports:
+  - [docs/HANDOFF_REPORT_2026-06-06.md](D:/FakeC/MCP/offiiceMCP/docs/HANDOFF_REPORT_2026-06-06.md)
+  - [docs/HANDOFF_REPORT_2026-06-06_v2.md](D:/FakeC/MCP/offiiceMCP/docs/HANDOFF_REPORT_2026-06-06_v2.md)
+
 ## Requirements
 
 - Windows 10 or Windows 11
