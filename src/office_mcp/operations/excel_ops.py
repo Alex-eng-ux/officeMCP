@@ -987,7 +987,7 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
         target_sheet.Name = target_sheet_name
 
     # 创建数据透视表缓存 (使用地址字符串更可靠)
-    source_data_addr = source_sheet.Range(source_range).Address(External=True)
+    source_data_addr = source_sheet.Range(source_range)
     try:
         pivot_cache = workbook.PivotCaches.Create(
             SourceType=1,  # xlDatabase

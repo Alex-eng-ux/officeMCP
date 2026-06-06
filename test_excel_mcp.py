@@ -1,16 +1,9 @@
 #!/usr/bin/env python
 """
-Excel MCP 工具集成测试 — 通过实机 MCP stdio 客户端连接测试
+Excel MCP integration test via a real MCP stdio client.
 
-测试范围：所有 excel_* 工具
-测试策略：创建工作簿 → 逐个调用工具 → 记录结果 → 关闭工作簿
-
-⚠️ 关键：不调用会弹出模态对话框的破坏性操作（set_open_password 等）
-
-运行方式：
-    set OFFICE_MCP_ALLOWED_DIRS=d:\FakeC\MCP\offiiceMCP\test_output
-    set OFFICE_MCP_VISIBLE=false
-    python test_excel_mcp.py
+Scope: all `excel_*` tools.
+Strategy: create a workbook, call tools in sequence, classify outcomes, and save a report.
 """
 
 import asyncio
@@ -25,7 +18,7 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# ── Configuration ──────────────────────────────────────────────────────────────
+# Configuration
 
 TEST_DIR = Path(r"d:\FakeC\MCP\offiiceMCP\test_output")
 TEST_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,32 +27,25 @@ EXCEL_FILE = str(TEST_DIR / "test_excel.xlsx")
 EXCEL_PDF_FILE = str(TEST_DIR / "test_excel.pdf")
 EXCEL_EXPORT_FILE = str(TEST_DIR / "test_excel_export.csv")
 
-SERVER_CMD = "python"
+SERVER_CMD = sys.executable
 SERVER_ARGS = ["-m", "office_mcp.server"]
 
-# 预期失败
+# Expected failures for unstable or unsupported Excel/COM operations.
 EXPECTED_FAILURES = {
-    # COM 限制：Visible=False 模式下 Validation.Add 和 Chart.SeriesCollection 不稳定
+    # COM-sensitive operations.
     "excel_add_data_validation",
     "excel_add_chart_series",
-    # 需要数据透视表等前置条件
+    # Known unsupported or flaky workflow coverage.
     "excel_add_slicer",
     "excel_create_pivot_table",
     "excel_add_subtotal",
     "excel_import_data",
-    "excel_delete_shape",
-    "excel_delete_comment",
-    "excel_advanced_filter",
-    "excel_add_image",
-    # COM 限制
-    "excel_export_data",
-    # 破坏性操作（弹出模态对话框，阻塞 COM）
+    # Operations skipped later because they can trigger blocking COM dialogs.
     "excel_set_open_password",
     "excel_set_write_reservation_password",
     "excel_mark_as_final",
     "excel_recommend_read_only",
-    # SaveAs 覆盖已有文件可能触发模态对话框
-    "excel_export_data",
+    # Save/export variants may still surface workbook state issues.
 }
 
 results: list[dict] = []
@@ -69,22 +55,27 @@ total_failed = 0
 total_expected_fail = 0
 
 
-def record(name: str, status: str, detail: str = ""):
+def record(name: str, status: str, detail: str = "") -> None:
     global total_tested, total_passed, total_failed, total_expected_fail
     total_tested += 1
     if status == "pass":
         total_passed += 1
-        symbol = "✓"
+        symbol = "[PASS]"
     elif status == "expected_failure":
         total_expected_fail += 1
-        symbol = "⚠"
+        symbol = "[XFAIL]"
     elif status == "fail":
         total_failed += 1
-        symbol = "✗"
+        symbol = "[FAIL]"
     else:
-        symbol = "⊘"
+        symbol = "[INFO]"
     results.append({"tool": name, "status": status, "detail": detail})
-    print(f"  {symbol} {name}: {status}" + (f" — {detail[:80]}" if detail else ""))
+    print(f"  {symbol} {name}: {status}" + (f" - {detail[:120]}" if detail else ""))
+
+
+def has_error(response: str) -> bool:
+    lowered = response.lower()
+    return "error" in lowered or "exception" in lowered or "traceback" in lowered
 
 
 async def call_tool(session: ClientSession, name: str, args: dict) -> str:
@@ -99,13 +90,12 @@ async def call_tool(session: ClientSession, name: str, args: dict) -> str:
 async def test_tool(session: ClientSession, name: str, args: dict, timeout: float = 30.0) -> str:
     try:
         response = await asyncio.wait_for(call_tool(session, name, args), timeout=timeout)
-        is_err = "错误" in response or "Error" in response
         if "Unknown tool" in response:
             record(name, "fail", "Tool not registered")
-        elif is_err and name not in EXPECTED_FAILURES:
-            record(name, "fail", response[:120])
-        elif name in EXPECTED_FAILURES and is_err:
-            record(name, "expected_failure", response[:80])
+        elif has_error(response) and name not in EXPECTED_FAILURES:
+            record(name, "fail", response[:240])
+        elif name in EXPECTED_FAILURES and has_error(response):
+            record(name, "expected_failure", response[:240])
         else:
             record(name, "pass")
         return response
@@ -113,7 +103,7 @@ async def test_tool(session: ClientSession, name: str, args: dict, timeout: floa
         record(name, "fail", f"Timeout ({timeout}s)")
         return "Timeout"
     except Exception as e:
-        err = str(e)[:120]
+        err = str(e)[:240]
         if name in EXPECTED_FAILURES:
             record(name, "expected_failure", err)
         else:
@@ -124,7 +114,7 @@ async def test_tool(session: ClientSession, name: str, args: dict, timeout: floa
 async def main():
     start_time = time.time()
 
-    # 清理残留进程
+    # Clean up leftover Excel processes from prior runs.
     os.system("taskkill /f /im EXCEL.EXE 2>nul")
     await asyncio.sleep(1)
 
@@ -148,8 +138,7 @@ async def main():
             fp = EXCEL_FILE
             sh = "Sheet1"
 
-            # ═══ Phase 1: 创建工作簿并添加数据 ═══
-            print("═══ Phase 1: Setup ═══")
+            print("Phase 1: Setup")
             await test_tool(session, "excel_create_workbook", {"file_path": fp, "overwrite": True})
             await test_tool(session, "excel_apply_operations", {
                 "file_path": fp,
@@ -163,19 +152,16 @@ async def main():
                 ]
             })
 
-            # ═══ Phase 2: 批量操作 ═══
-            print("\n═══ Phase 2: Apply operations ═══")
+            print("\nPhase 2: Apply operations")
             await test_tool(session, "excel_apply_operations", {
                 "file_path": fp,
                 "operations": [{"type": "write_cell", "sheet_name": sh, "row": 1, "col": 1, "value": "test"}]
             })
 
-            # ═══ Phase 3: 导出 ═══
-            print("\n═══ Phase 3: Export ═══")
+            print("\nPhase 3: Export")
             await test_tool(session, "excel_export_pdf", {"file_path": fp, "output_path": EXCEL_PDF_FILE})
 
-            # ═══ Phase 4: 数据验证/条件格式/切片器/分类汇总 ═══
-            print("\n═══ Phase 4: Data validation / Conditional format / Slicer / Subtotal ═══")
+            print("\nPhase 4: Data validation / Conditional format / Slicer / Subtotal")
             await test_tool(session, "excel_add_data_validation", {
                 "file_path": fp, "sheet": sh, "range": "C1:C10", "validation_type": "list", "formula1": "a,b,c"
             })
@@ -190,35 +176,31 @@ async def main():
                 "file_path": fp, "sheet": sh, "range": "A1:B3"
             })
 
-            # ═══ Phase 5: 合并/边框/命名范围 ═══
-            print("\n═══ Phase 5: Merge / Borders / Named range ═══")
+            print("\nPhase 5: Merge / Borders / Named range")
             await test_tool(session, "excel_merge_cells", {"file_path": fp, "sheet": sh, "range": "A1:B1"})
             await test_tool(session, "excel_set_borders", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
             await test_tool(session, "excel_add_named_range", {
                 "file_path": fp, "name": "TestRange", "refers_to": "=Sheet1!$A$1:$B$3"
             })
 
-            # ═══ Phase 6: 数据透视表/导入导出 ═══
-            print("\n═══ Phase 6: Pivot / Import / Export ═══")
+            print("\nPhase 6: Pivot / Import / Export")
             await test_tool(session, "excel_create_pivot_table", {"file_path": fp})
             await test_tool(session, "excel_import_data", {"file_path": fp, "csv_file": "nonexistent.csv"})
             await test_tool(session, "excel_export_data", {"file_path": fp, "sheet": sh, "export_path": EXCEL_EXPORT_FILE})
 
-            # ═══ Phase 7: 排版检查 ═══
-            print("\n═══ Phase 7: Typography ═══")
+            print("\nPhase 7: Typography")
             await test_tool(session, "excel_check_typography", {"file_path": fp})
 
-            # ═══ Phase 8: 工作表操作 ═══
-            print("\n═══ Phase 8: Worksheets ═══")
+            print("\nPhase 8: Worksheets")
             await test_tool(session, "excel_list_worksheets", {"file_path": fp})
             await test_tool(session, "excel_get_worksheet_info", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_copy_worksheet", {"file_path": fp, "sheet": sh})
-            # 从复制结果中提取实际的工作表名称
+            # Detect the copied worksheet name from the tool response.
             copy_resp = await call_tool(session, "excel_list_worksheets", {"file_path": fp})
             copied_sheet = None
             import json as _json
             try:
-                # 尝试解析 JSON 格式
+                # Prefer JSON parsing when the tool returns structured data.
                 data = _json.loads(copy_resp)
                 if isinstance(data, list):
                     for item in data:
@@ -235,7 +217,7 @@ async def main():
                             break
             except Exception:
                 pass
-            # 回退：尝试从文本中提取
+            # Fall back to line parsing for plain-text responses.
             if not copied_sheet:
                 for line in copy_resp.split("\n"):
                     line = line.strip().strip('"').strip("'").strip(",")
@@ -252,8 +234,7 @@ async def main():
             await test_tool(session, "excel_unprotect_worksheet", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_set_tab_color", {"file_path": fp, "sheet": sh, "color": "#FF0000"})
 
-            # ═══ Phase 9: 范围操作 ═══
-            print("\n═══ Phase 9: Ranges ═══")
+            print("\nPhase 9: Ranges")
             await test_tool(session, "excel_list_used_range", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_clear_range", {"file_path": fp, "sheet": sh, "range": "C1:D1"})
             await test_tool(session, "excel_copy_range", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
@@ -262,15 +243,13 @@ async def main():
             await test_tool(session, "excel_delete_cells", {"file_path": fp, "sheet": sh, "range": "E1:F1"})
             await test_tool(session, "excel_insert_cells", {"file_path": fp, "sheet": sh, "range": "E1:F1"})
 
-            # ═══ Phase 10: 行列大小 ═══
-            print("\n═══ Phase 10: Row/Column sizing ═══")
+            print("\nPhase 10: Row/Column sizing")
             await test_tool(session, "excel_set_row_height", {"file_path": fp, "sheet": sh, "row": 1, "height": 30})
             await test_tool(session, "excel_set_column_width", {"file_path": fp, "sheet": sh, "column": "A", "width": 15})
             await test_tool(session, "excel_hide_rows", {"file_path": fp, "sheet": sh, "rows": "5:5"})
 
-            # ═══ Phase 11: 图表 ═══
-            print("\n═══ Phase 11: Charts ═══")
-            # 先创建图表，后续图表操作才能执行
+            print("\nPhase 11: Charts")
+            # Create a simple chart first so chart tools have something to target.
             await test_tool(session, "excel_apply_operations", {
                 "file_path": fp,
                 "operations": [{"type": "create_chart", "sheet_name": sh, "chart_type": "column", "data_range": "A1:B3"}]
@@ -294,8 +273,7 @@ async def main():
             })
             await test_tool(session, "excel_delete_chart", {"file_path": fp, "sheet": sh, "chart_index": 1})
 
-            # ═══ Phase 12: 字体格式 ═══
-            print("\n═══ Phase 12: Font formatting ═══")
+            print("\nPhase 12: Font formatting")
             await test_tool(session, "excel_set_font", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
             await test_tool(session, "excel_set_font_bold", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
             await test_tool(session, "excel_set_font_italic", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
@@ -309,8 +287,7 @@ async def main():
                 "file_path": fp, "sheet": sh, "source_range": "A1:B3", "target_range": "C1:D3"
             })
 
-            # ═══ Phase 13: 页面设置 ═══
-            print("\n═══ Phase 13: Page setup ═══")
+            print("\nPhase 13: Page setup")
             await test_tool(session, "excel_set_page_orientation", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_set_page_size", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_set_page_margins", {"file_path": fp, "sheet": sh})
@@ -322,8 +299,7 @@ async def main():
             await test_tool(session, "excel_set_scale", {"file_path": fp, "sheet": sh, "scale": 100})
             await test_tool(session, "excel_set_fit_to_page", {"file_path": fp, "sheet": sh, "fit_width": 1, "fit_height": 1})
 
-            # ═══ Phase 14: 公式 ═══
-            print("\n═══ Phase 14: Formulas ═══")
+            print("\nPhase 14: Formulas")
             await test_tool(session, "excel_set_array_formula", {
                 "file_path": fp, "sheet": sh, "range": "C1:C3", "formula": "=A1:A3*B1:B3"
             })
@@ -335,14 +311,12 @@ async def main():
             await test_tool(session, "excel_convert_to_values", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
             await test_tool(session, "excel_get_formula_info", {"file_path": fp, "sheet": sh, "cell": "A1"})
 
-            # ═══ Phase 15: 名称 ═══
-            print("\n═══ Phase 15: Names ═══")
+            print("\nPhase 15: Names")
             await test_tool(session, "excel_define_name", {
                 "file_path": fp, "name": "MyName", "refers_to": "=Sheet1!$A$1"
             })
 
-            # ═══ Phase 16: 表格 ═══
-            print("\n═══ Phase 16: Tables ═══")
+            print("\nPhase 16: Tables")
             # Create table on a clean range (D1:E3) to avoid conflicts with merged cells
             await test_tool(session, "excel_apply_operations", {
                 "file_path": fp,
@@ -376,8 +350,7 @@ async def main():
                 "file_path": fp, "sheet": sh, "table_name": "TestTable"
             })
 
-            # ═══ Phase 17: 筛选/排序 ═══
-            print("\n═══ Phase 17: Filters / Sort ═══")
+            print("\nPhase 17: Filters / Sort")
             await test_tool(session, "excel_add_auto_filter", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_remove_auto_filter", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_sort_range", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
@@ -386,28 +359,25 @@ async def main():
             })
             await test_tool(session, "excel_remove_duplicates", {"file_path": fp, "sheet": sh, "range": "A1:B3"})
 
-            # ═══ Phase 18: 分组 ═══
-            print("\n═══ Phase 18: Grouping ═══")
+            print("\nPhase 18: Grouping")
             await test_tool(session, "excel_group_rows", {"file_path": fp, "sheet": sh, "range": "2:3"})
             await test_tool(session, "excel_ungroup_rows", {"file_path": fp, "sheet": sh, "range": "2:3"})
             await test_tool(session, "excel_group_columns", {"file_path": fp, "sheet": sh, "range": "A:B"})
             await test_tool(session, "excel_ungroup_columns", {"file_path": fp, "sheet": sh, "range": "A:B"})
 
-            # ═══ Phase 19: 保护 ═══
-            print("\n═══ Phase 19: Protection ═══")
+            print("\nPhase 19: Protection")
             await test_tool(session, "excel_protect_workbook", {"file_path": fp})
             await test_tool(session, "excel_unprotect_workbook", {"file_path": fp})
 
-            # ═══ Phase 20: 形状/图片 ═══
-            print("\n═══ Phase 20: Shapes / Images ═══")
-            # 创建测试图片（10x10 红色 PNG）
+            print("\nPhase 20: Shapes / Images")
+            # Build a tiny 10x10 PNG for image insertion tests.
             test_image_path = str(TEST_DIR / "test_image.png")
             try:
                 from PIL import Image as PILImage
                 img = PILImage.new('RGB', (10, 10), color='red')
                 img.save(test_image_path)
             except ImportError:
-                # 使用 struct/zlib 创建最小有效 PNG
+                # Fallback: write a minimal PNG using struct/zlib only.
                 def _create_png(path, w=10, h=10):
                     def _chunk(ctype, data):
                         c = ctype + data
@@ -428,34 +398,29 @@ async def main():
             await test_tool(session, "excel_list_shapes", {"file_path": fp, "sheet": sh})
             await test_tool(session, "excel_delete_shape", {"file_path": fp, "sheet": sh, "index": 1})
 
-            # ═══ Phase 21: 评论 ═══
-            print("\n═══ Phase 21: Comments ═══")
+            print("\nPhase 21: Comments")
             await test_tool(session, "excel_add_comment", {
                 "file_path": fp, "sheet": sh, "cell": "A1", "text": "Test comment"
             })
             await test_tool(session, "excel_delete_comment", {"file_path": fp, "sheet": sh, "cell": "A1"})
 
-            # ═══ Phase 22: 视图 ═══
-            print("\n═══ Phase 22: View ═══")
+            print("\nPhase 22: View")
             await test_tool(session, "excel_set_view_zoom", {"file_path": fp, "sheet": sh, "zoom": 100})
             await test_tool(session, "excel_set_view_gridlines", {"file_path": fp, "sheet": sh, "show": True})
             await test_tool(session, "excel_set_view_headings", {"file_path": fp, "sheet": sh, "show": True})
 
-            # ═══ Phase 23: 计算 ═══
-            print("\n═══ Phase 23: Calculation ═══")
+            print("\nPhase 23: Calculation")
             await test_tool(session, "excel_recalculate", {"file_path": fp})
             await test_tool(session, "excel_set_calculation_mode", {"file_path": fp, "mode": "auto"})
             await test_tool(session, "excel_set_iterative_calc", {"file_path": fp})
 
-            # ═══ Phase 24: 破坏性保护（跳过调用，仅标记为预期失败） ═══
-            print("\n═══ Phase 24: Destructive protection (SKIPPED — would block COM) ═══")
-            # 这些工具会弹出模态对话框阻塞 COM，不实际调用
+            print("\nPhase 24: Destructive protection (skipped: would block COM)")
+            # Keep the expected-failure accounting without opening modal COM prompts.
             for name in ["excel_set_open_password", "excel_set_write_reservation_password",
                          "excel_mark_as_final", "excel_recommend_read_only"]:
                 record(name, "expected_failure", "Skipped: would block COM with modal dialog")
 
-            # ═══ Phase 25: 文档生命周期 ═══
-            print("\n═══ Phase 25: Document lifecycle ═══")
+            print("\nPhase 25: Document lifecycle")
             await test_tool(session, "excel_close_workbook", {"file_path": fp, "save": True})
             await test_tool(session, "excel_open_workbook", {"file_path": fp})
             await test_tool(session, "excel_close_workbook", {"file_path": fp, "save": True})
@@ -489,7 +454,7 @@ async def main():
 
     failures = [r for r in results if r["status"] == "fail"]
     if failures:
-        print(f"\n❌ {len(failures)} unexpected failure(s):")
+        print(f"\n{len(failures)} unexpected failure(s):")
         for f in failures:
             print(f"  - {f['tool']}: {f['detail'][:100]}")
 
