@@ -6,7 +6,12 @@
 
 `office-mcp` is a Windows-only MCP server for controlling local Microsoft Office through COM automation. It lets AI agents create, edit, inspect, and export Word, Excel, and PowerPoint documents through the real desktop applications installed on the machine.
 
-This project takes the interactive PowerPoint workflow popularized by tools like `ppt-mcp` and extends the same style of control to Excel and Word behind one server.
+This project takes the interactive PowerPoint workflow popularized by tools like `ppt-mcp` and extends the same style of control to Excel and Word.
+
+It supports two deployment shapes:
+
+- a legacy all-in-one `office-mcp` server
+- recommended split servers for `Word`, `Excel`, and `PowerPoint`
 
 ## Why this project
 
@@ -41,6 +46,40 @@ pip install dist/office_mcp-*.whl
 
 Claude Desktop, Cursor, and VS Code can point to either the installed console script or module entry point.
 
+For many agent clients, especially clients that inject MCP tools into the model context dynamically, the recommended setup is to register **three smaller Office MCP servers** instead of one giant combined namespace. In practice this is more robust than exposing hundreds of Word, Excel, and PowerPoint tools through a single MCP namespace.
+
+Recommended split setup:
+
+```json
+{
+  "mcpServers": {
+    "office_word": {
+      "command": "python",
+      "args": ["-m", "office_mcp.server_word"],
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work\\client-project;E:\\test"
+      }
+    },
+    "office_excel": {
+      "command": "python",
+      "args": ["-m", "office_mcp.server_excel"],
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work\\client-project;E:\\test"
+      }
+    },
+    "office_powerpoint": {
+      "command": "python",
+      "args": ["-m", "office_mcp.server_powerpoint"],
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work\\client-project;E:\\test"
+      }
+    }
+  }
+}
+```
+
+Legacy combined setup:
+
 Installed console script:
 
 ```json
@@ -55,6 +94,8 @@ Installed console script:
   }
 }
 ```
+
+If your MCP client handles large tool surfaces well, the combined server is still available. If your client shows only a small subset of tools, or appears to "lose" Word/Excel/PPT tools after startup, switch to the split configuration above.
 
 Python module entry point:
 
@@ -106,6 +147,19 @@ This project borrows the strongest product ideas from a PowerPoint-first MCP wor
 - Quality checks matter because typography inspection and layout-aware tools help AI produce cleaner results
 
 The main difference here is breadth: the same server also covers Excel and Word with a shared safety model and a shared automation architecture.
+
+## Agent compatibility notes
+
+This repository is designed to work across different MCP-capable agent clients, not only Codex.
+
+- Some clients handle large MCP namespaces well and can use the combined `office-mcp` entrypoint.
+- Some clients degrade when a single MCP server exposes a very large tool surface with long descriptions and schemas.
+- If you observe missing tools in the client UI or only a tiny subset of Office tools appearing, use the split entrypoints:
+  - `office_mcp.server_word`
+  - `office_mcp.server_excel`
+  - `office_mcp.server_powerpoint`
+
+This split configuration is currently the safest default for general agent compatibility.
 
 ## Core capabilities
 
@@ -250,21 +304,24 @@ These phrases tend to produce better presentation results:
 ```text
 MCP client
   -> office_mcp.server
+     or office_mcp.server_word
+     or office_mcp.server_excel
+     or office_mcp.server_powerpoint
     -> tools/
-      -> word.py
-      -> excel.py
-      -> powerpoint.py
-      -> office.py
+       -> word.py
+       -> excel.py
+       -> powerpoint.py
+       -> office.py
     -> operations/
-      -> word_ops.py
-      -> excel_ops.py
-      -> ppt_ops.py
+       -> word_ops.py
+       -> excel_ops.py
+       -> ppt_ops.py
     -> core/
-      -> office_manager.py
-      -> path_guard.py
-      -> errors.py
+       -> office_manager.py
+       -> path_guard.py
+       -> errors.py
     -> utils/
-      -> icons.py
+       -> icons.py
   -> Microsoft Office COM automation
 ```
 
