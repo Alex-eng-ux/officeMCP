@@ -75,7 +75,12 @@ def load_tool_names() -> list[str]:
         sys.path.insert(0, "src")
 
     server_module = importlib.import_module("office_mcp.server")
-    mcp = getattr(server_module, "mcp")
+    mcp = getattr(server_module, "mcp", None)
+    if mcp is None:
+        build_full_server = getattr(server_module, "build_full_server", None)
+        if not callable(build_full_server):
+            raise RuntimeError("Office MCP server module does not expose mcp or build_full_server()")
+        mcp = build_full_server()
 
     tools = _resolve_tool_registry(mcp)
     if not isinstance(tools, dict):
