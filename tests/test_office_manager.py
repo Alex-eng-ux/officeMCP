@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
+from office_mcp.compat import FallbackFastMCP
 from office_mcp.core.errors import COMOperationError, OfficeNotInstalledError
 from office_mcp.core.office_manager import OfficeManager
-from office_mcp.tools.office import register_office_tools
-from office_mcp.compat import FallbackFastMCP
 from office_mcp.operations.word_ops import (
     _get_document_info,
     _is_document_protected,
 )
+from office_mcp.tools.office import register_office_tools
 
 
 def test_normalize_app_type_accepts_powerpoint_alias() -> None:
