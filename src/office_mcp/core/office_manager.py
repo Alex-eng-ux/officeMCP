@@ -395,6 +395,8 @@ class OfficeManager:
         if file_path.exists() and not overwrite:
             raise COMOperationError("create_document", f"File already exists: {path_key}")
 
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
         app_type = self._get_app_type_by_path(file_path)
         app = self._get_app(app_type)
 
@@ -411,8 +413,33 @@ class OfficeManager:
                 return pres
             raise COMOperationError("create_document", f"Unsupported app type: {app_type}")
 
+        def _initial_save(doc: Any) -> None:
+            if app_type == "excel":
+                doc.SaveAs(path_key)
+                return
+            if app_type in {"word", "ppt"}:
+                doc.SaveAs(path_key)
+                return
+            raise COMOperationError("create_document", f"Unsupported app type: {app_type}")
+
+        def _verify_initial_save(doc: Any) -> None:
+            if not file_path.exists():
+                raise COMOperationError(
+                    "create_document",
+                    f"Initial save did not materialize on disk: {path_key}",
+                )
+
+            full_name = getattr(doc, "FullName", "") or ""
+            if full_name and _normalize_path_key(Path(full_name)) != path_key:
+                raise COMOperationError(
+                    "create_document",
+                    f"Document saved to unexpected path: {full_name}",
+                )
+
         try:
             doc = self._retry_on_modal(_create)
+            self._retry_on_modal(_initial_save, doc)
+            self._retry_on_modal(_verify_initial_save, doc)
             logger.info("Created %s document handle for: %s", app_type, path_key)
             return self._remember_document(file_path, app_type, doc)
         except Exception as error:  # noqa: BLE001

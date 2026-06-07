@@ -657,6 +657,9 @@ def _auto_fit_columns(workbook: Any, op: dict) -> str:
     """自动调整列宽."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     columns = op.get("columns", [])
+    if isinstance(columns, str):
+        sheet.Columns(columns).AutoFit()
+        return f"auto_fit_columns: {columns}"
     for col in columns:
         sheet.Columns(col).AutoFit()
     return f"auto_fit_columns: {columns}"

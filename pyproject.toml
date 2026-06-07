@@ -47,6 +47,9 @@ dev = [
 
 [project.scripts]
 office-mcp = "office_mcp.server:main"
+office-word-mcp = "office_mcp.server:main_word"
+office-excel-mcp = "office_mcp.server:main_excel"
+office-powerpoint-mcp = "office_mcp.server:main_powerpoint"
 
 [tool.setuptools.packages.find]
 where = ["src"]

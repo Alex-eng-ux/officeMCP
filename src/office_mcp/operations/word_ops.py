@@ -115,6 +115,47 @@ PROTECTION_TYPE_MAP = {
     "all": 5,                 # wdAllowOnlyReading
 }
 
+
+def _is_document_protected(doc: Any) -> bool:
+    """Best-effort protection probe for Word documents.
+
+    Word COM should report wdNoProtection as 0, but some document states can
+    surface odd values or wrappers. Be conservative and only report protected
+    when the value is clearly non-zero.
+    """
+    try:
+        protection_type = getattr(doc, "ProtectionType", 0)
+    except Exception:
+        return False
+
+    if protection_type in (None, False, "", 0, "0", -1, "-1"):
+        return False
+
+    try:
+        return int(protection_type) != 0
+    except (TypeError, ValueError):
+        normalized = str(protection_type).strip().lower()
+        return normalized not in {"0", "-1", "wdnoprotection", "none", "false"}
+
+
+def _safe_compute_stat(doc: Any, stat_id: int, default: int = 0) -> int:
+    """Return a Word statistic value without failing the whole info probe."""
+    try:
+        return int(doc.ComputeStatistics(stat_id))
+    except Exception as exc:
+        logger.warning("Word ComputeStatistics(%s) failed: %s", stat_id, exc)
+        return default
+
+
+def _safe_builtin_property(doc: Any, name: str, default: Any = "") -> Any:
+    """Return a built-in Word property value without failing the whole probe."""
+    try:
+        value = doc.BuiltInDocumentProperties(name).Value
+        return default if value is None else value
+    except Exception as exc:
+        logger.warning("Word BuiltInDocumentProperties(%s) failed: %s", name, exc)
+        return default
+
 MAIL_MERGE_RETRYABLE_HRESULTS = {
     -2147418111,  # RPC_E_CALL_REJECTED
     -2147418110,  # RPC_E_SERVERCALL_RETRYLATER
@@ -1324,22 +1365,21 @@ def _get_document_info(doc: Any, op: dict) -> dict:
         op: 操作配置（无参数）
     """
     try:
-        info = {
-            "page_count": doc.ComputeStatistics(2),       # wdStatisticPages
-            "word_count": doc.ComputeStatistics(0),       # wdStatisticWords
-            "character_count": doc.ComputeStatistics(3),  # wdStatisticCharacters
-            "paragraph_count": doc.ComputeStatistics(4),  # wdStatisticParagraphs
-            "line_count": doc.ComputeStatistics(1),       # wdStatisticLines
-            "author": doc.BuiltInDocumentProperties("Author").Value or "",
-            "title": doc.BuiltInDocumentProperties("Title").Value or "",
-            "subject": doc.BuiltInDocumentProperties("Subject").Value or "",
-            "creation_date": str(doc.BuiltInDocumentProperties("Creation Date").Value or ""),
-            "last_saved": str(doc.BuiltInDocumentProperties("Last Save Time").Value or ""),
-            "revision_number": doc.BuiltInDocumentProperties("Revision Number").Value or 0,
-            "is_protected": doc.ProtectionType != 0,     # wdNoProtection = 0
-            "track_changes": doc.TrackRevisions,
+        return {
+            "page_count": _safe_compute_stat(doc, 2),       # wdStatisticPages
+            "word_count": _safe_compute_stat(doc, 0),       # wdStatisticWords
+            "character_count": _safe_compute_stat(doc, 3),  # wdStatisticCharacters
+            "paragraph_count": _safe_compute_stat(doc, 4),  # wdStatisticParagraphs
+            "line_count": _safe_compute_stat(doc, 1),       # wdStatisticLines
+            "author": _safe_builtin_property(doc, "Author", ""),
+            "title": _safe_builtin_property(doc, "Title", ""),
+            "subject": _safe_builtin_property(doc, "Subject", ""),
+            "creation_date": str(_safe_builtin_property(doc, "Creation Date", "")),
+            "last_saved": str(_safe_builtin_property(doc, "Last Save Time", "")),
+            "revision_number": _safe_builtin_property(doc, "Revision Number", 0),
+            "is_protected": _is_document_protected(doc),
+            "track_changes": bool(getattr(doc, "TrackRevisions", False)),
         }
-        return info
     except Exception as e:
         raise COMOperationError("get_document_info", str(e))
 

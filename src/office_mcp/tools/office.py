@@ -1,6 +1,9 @@
 """通用 Office MCP 工具."""
 
+from pathlib import Path
+
 from office_mcp.compat import FastMCP
+from office_mcp.config import settings
 from office_mcp.core.errors import OfficeMCPError
 from office_mcp.core.office_manager import office_manager
 from office_mcp.core.path_guard import validate_path
@@ -8,6 +11,32 @@ from office_mcp.core.path_guard import validate_path
 
 def register_office_tools(mcp: FastMCP) -> None:
     """注册通用 Office 工具."""
+
+    @mcp.tool()
+    def office_create_document(file_path: str, overwrite: bool = False) -> str:
+        """Create a new Office document based on file extension."""
+        try:
+            path = validate_path(file_path)
+            if path.exists() and not overwrite and not settings.default_overwrite:
+                return f"错误: 文件已存在，请设置 overwrite=true 覆盖: {file_path}"
+
+            office_manager.create_document(path, overwrite=overwrite)
+
+            app_names = {
+                ".docx": "Word",
+                ".doc": "Word",
+                ".docm": "Word",
+                ".xlsx": "Excel",
+                ".xls": "Excel",
+                ".xlsm": "Excel",
+                ".pptx": "PPT",
+                ".ppt": "PPT",
+                ".pptm": "PPT",
+            }
+            app_name = app_names.get(Path(file_path).suffix.lower(), "Office")
+            return f"已创建 {app_name} 文件: {file_path}"
+        except OfficeMCPError as e:
+            return f"错误: {e}"
 
     @mcp.tool()
     def office_status() -> dict:

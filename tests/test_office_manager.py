@@ -8,6 +8,12 @@ import pytest
 
 from office_mcp.core.errors import COMOperationError, OfficeNotInstalledError
 from office_mcp.core.office_manager import OfficeManager
+from office_mcp.tools.office import register_office_tools
+from office_mcp.compat import FallbackFastMCP
+from office_mcp.operations.word_ops import (
+    _get_document_info,
+    _is_document_protected,
+)
 
 
 def test_normalize_app_type_accepts_powerpoint_alias() -> None:
@@ -119,3 +125,158 @@ def test_dispatch_app_maps_busy_failures_to_com_operation_error(
 
     with pytest.raises(COMOperationError, match="busy, blocked by a dialog, or disconnected"):
         manager._dispatch_app("excel")
+
+
+def test_create_document_saves_new_word_document_to_target_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = OfficeManager()
+    doc_path = tmp_path / "proposal.docx"
+
+    class FakeDocument:
+        def __init__(self) -> None:
+            self.saved_paths: list[str] = []
+            self.FullName = ""
+
+        def SaveAs(self, path: str) -> None:  # noqa: N802
+            self.saved_paths.append(path)
+            Path(path).touch()
+            self.FullName = path
+
+    class FakeDocuments:
+        def __init__(self, doc: FakeDocument) -> None:
+            self._doc = doc
+
+        def Add(self) -> FakeDocument:  # noqa: N802
+            return self._doc
+
+    class FakeWordApp:
+        def __init__(self, doc: FakeDocument) -> None:
+            self.Documents = FakeDocuments(doc)
+
+    fake_doc = FakeDocument()
+    fake_app = FakeWordApp(fake_doc)
+
+    monkeypatch.setattr(manager, "_get_app", lambda app_type: fake_app)
+    monkeypatch.setattr(manager, "_retry_on_modal", lambda func, *args, **kwargs: func(*args))
+
+    doc = manager.create_document(doc_path, overwrite=True)
+
+    assert doc is fake_doc
+    assert fake_doc.saved_paths == [str(doc_path.resolve())]
+    assert manager._documents[str(doc_path.resolve())] is fake_doc
+    assert manager._doc_types[str(doc_path.resolve())] == "word"
+
+
+def test_create_document_creates_parent_directories_before_initial_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = OfficeManager()
+    doc_path = tmp_path / "nested" / "folder" / "tracker.xlsx"
+
+    class FakeDocument:
+        def __init__(self) -> None:
+            self.saved_paths: list[str] = []
+            self.FullName = ""
+
+        def SaveAs(self, path: str) -> None:  # noqa: N802
+            self.saved_paths.append(path)
+            Path(path).touch()
+            self.FullName = path
+
+    class FakeWorkbooks:
+        def __init__(self, doc: FakeDocument) -> None:
+            self._doc = doc
+
+        def Add(self) -> FakeDocument:  # noqa: N802
+            return self._doc
+
+    class FakeExcelApp:
+        def __init__(self, doc: FakeDocument) -> None:
+            self.Workbooks = FakeWorkbooks(doc)
+
+    fake_doc = FakeDocument()
+    fake_app = FakeExcelApp(fake_doc)
+
+    monkeypatch.setattr(manager, "_get_app", lambda app_type: fake_app)
+    monkeypatch.setattr(manager, "_retry_on_modal", lambda func, *args, **kwargs: func(*args))
+
+    doc = manager.create_document(doc_path, overwrite=True)
+
+    assert doc is fake_doc
+    assert doc_path.parent.exists()
+    assert doc_path.exists()
+    assert fake_doc.saved_paths == [str(doc_path.resolve())]
+
+
+def test_register_office_tools_exposes_create_document() -> None:
+    mcp = FallbackFastMCP("office-test")
+
+    register_office_tools(mcp)
+
+    assert "office_create_document" in mcp.tools
+
+
+def test_is_document_protected_returns_false_for_no_protection() -> None:
+    doc = types.SimpleNamespace(ProtectionType=0)
+
+    assert _is_document_protected(doc) is False
+
+
+def test_is_document_protected_returns_false_for_negative_one_no_protection() -> None:
+    doc = types.SimpleNamespace(ProtectionType=-1)
+
+    assert _is_document_protected(doc) is False
+
+
+def test_is_document_protected_returns_true_for_non_zero_protection() -> None:
+    doc = types.SimpleNamespace(ProtectionType=3)
+
+    assert _is_document_protected(doc) is True
+
+
+def test_is_document_protected_returns_false_when_probe_raises() -> None:
+    class FakeDoc:
+        @property
+        def ProtectionType(self):  # noqa: N802
+            raise RuntimeError("COM probe failed")
+
+    assert _is_document_protected(FakeDoc()) is False
+
+
+def test_get_document_info_tolerates_compute_statistics_failures() -> None:
+    class FakeProperty:
+        def __init__(self, value) -> None:
+            self.Value = value
+
+    class FakeProperties:
+        def __call__(self, name: str) -> FakeProperty:
+            mapping = {
+                "Author": "Tester",
+                "Title": "Doc",
+                "Subject": "Subj",
+                "Creation Date": "2026-06-07",
+                "Last Save Time": "2026-06-07",
+                "Revision Number": 1,
+            }
+            return FakeProperty(mapping[name])
+
+    class FakeDoc:
+        ProtectionType = -1
+        TrackRevisions = False
+        BuiltInDocumentProperties = FakeProperties()
+
+        def ComputeStatistics(self, stat_id: int) -> int:  # noqa: N802
+            if stat_id == 2:
+                raise RuntimeError("boom")
+            return 7
+
+    info = _get_document_info(FakeDoc(), {})
+
+    assert info["page_count"] == 0
+    assert info["word_count"] == 7
+    assert info["character_count"] == 7
+    assert info["paragraph_count"] == 7
+    assert info["line_count"] == 7
+    assert info["author"] == "Tester"
+    assert info["is_protected"] is False
