@@ -46,6 +46,115 @@ pip install dist/office_mcp-*.whl
 
 Claude Desktop, Cursor, and VS Code can point to either the installed console script or module entry point.
 
+### Codex global install
+
+If you want Codex to use this MCP globally on Windows, the most reliable pattern is:
+
+1. create or reuse a dedicated MCP virtual environment
+2. install this repo into that environment
+3. point Codex at the split server entrypoints in `C:\Users\YourName\.codex\config.toml`
+
+Example install commands:
+
+```powershell
+py -3.11 -m venv C:\Users\YourName\.codex\mcp-venvs\office-mcp
+C:\Users\YourName\.codex\mcp-venvs\office-mcp\Scripts\python.exe -m pip install -U pip
+C:\Users\YourName\.codex\mcp-venvs\office-mcp\Scripts\python.exe -m pip install D:\path\to\officeMCP
+```
+
+For local development, editable install is convenient:
+
+```powershell
+C:\Users\YourName\.codex\mcp-venvs\office-mcp\Scripts\python.exe -m pip install -e D:\path\to\officeMCP
+```
+
+Recommended `config.toml` shape:
+
+```toml
+[mcp_servers.office_word_mcp]
+command = "C:\\Users\\YourName\\.codex\\mcp-venvs\\office-mcp\\Scripts\\python.exe"
+args = ["-m", "office_mcp.server_word"]
+env = { OFFICE_MCP_ALLOWED_DIRS = "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test" }
+
+[mcp_servers.office_excel_mcp]
+command = "C:\\Users\\YourName\\.codex\\mcp-venvs\\office-mcp\\Scripts\\python.exe"
+args = ["-m", "office_mcp.server_excel"]
+env = { OFFICE_MCP_ALLOWED_DIRS = "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test" }
+
+[mcp_servers.office_powerpoint_mcp]
+command = "C:\\Users\\YourName\\.codex\\mcp-venvs\\office-mcp\\Scripts\\python.exe"
+args = ["-m", "office_mcp.server_powerpoint"]
+env = { OFFICE_MCP_ALLOWED_DIRS = "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test" }
+```
+
+After updating `config.toml`, fully restart Codex so it reloads the MCP server definitions.
+
+### Other agent clients
+
+Most MCP clients fall into one of two configuration styles:
+
+- `config.toml` style, used by Codex-like clients
+- JSON `mcpServers` style, used by Claude Desktop, Cursor, Cline, and many VS Code extensions
+
+If your client supports MCP but uses a different settings file, the same command, args, and env values still apply.
+
+Claude Desktop or JSON-based clients:
+
+```json
+{
+  "mcpServers": {
+    "office_word": {
+      "command": "python",
+      "args": ["-m", "office_mcp.server_word"],
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test"
+      }
+    },
+    "office_excel": {
+      "command": "python",
+      "args": ["-m", "office_mcp.server_excel"],
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test"
+      }
+    },
+    "office_powerpoint": {
+      "command": "python",
+      "args": ["-m", "office_mcp.server_powerpoint"],
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test"
+      }
+    }
+  }
+}
+```
+
+If your client prefers an installed executable instead of `python -m`, use:
+
+```json
+{
+  "mcpServers": {
+    "office": {
+      "command": "office-mcp",
+      "env": {
+        "OFFICE_MCP_ALLOWED_DIRS": "C:\\Users\\YourName\\Documents;C:\\Users\\YourName\\Desktop;D:\\work;E:\\test"
+      }
+    }
+  }
+}
+```
+
+If your client ships its own Python path picker or per-server launcher UI, map the fields like this:
+
+- `command`: Python executable or installed `office-mcp` script
+- `args`: split entrypoint such as `["-m", "office_mcp.server_word"]`
+- `env`: at minimum set `OFFICE_MCP_ALLOWED_DIRS`
+
+Recommended client behavior:
+
+- prefer the three split servers for better tool visibility
+- restart the client after editing MCP settings
+- if the client only shows a small subset of tools at first, verify whether it lazily injects tools before assuming the server is broken
+
 For many agent clients, especially clients that inject MCP tools into the model context dynamically, the recommended setup is to register **three smaller Office MCP servers** instead of one giant combined namespace. In practice this is more robust than exposing hundreds of Word, Excel, and PowerPoint tools through a single MCP namespace.
 
 Recommended split setup:
