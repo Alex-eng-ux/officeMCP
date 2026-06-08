@@ -1,4 +1,4 @@
-"""Word COM 操作实现."""
+﻿"""Word COM 操作实现."""
 
 import logging
 import os
@@ -11,6 +11,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from office_mcp.core.errors import COMOperationError
+from office_mcp.core.office_manager import office_manager
 from office_mcp.core.path_guard import validate_path
 from office_mcp.utils.icons import get_icon_url, search_icons
 
@@ -1321,6 +1322,7 @@ def _mail_merge(doc: Any, op: dict) -> str:
             try:
                 _retry_word_mail_merge_call("SaveAs", merged_doc.SaveAs, str(output_file))
                 logger.info("Phase 4: saved result to %s", output_file)
+                office_manager.track_document(output_file, merged_doc, app_type="word")
             except Exception as save_err:
                 logger.error("Phase 4: SaveAs failed: %s", save_err)
                 try:
@@ -1329,14 +1331,13 @@ def _mail_merge(doc: Any, op: dict) -> str:
                     pass
                 merged_doc = None
                 raise
-            try:
-                _retry_word_mail_merge_call("CloseMergedDocument", merged_doc.Close, SaveChanges=False)
-            except Exception:
-                pass
-            merged_doc = None
             return f"mail_merge_executed_to_file: {output_file}"
 
         if send_to_new_document:
+            merged_full_name = (getattr(merged_doc, "FullName", "") or "").strip()
+            if merged_full_name:
+                with contextlib.suppress(Exception):
+                    office_manager.track_document(Path(merged_full_name), merged_doc, app_type="word")
             return f"mail_merge_executed_to_new_document: {data_source}"
 
         return f"mail_merge_executed: {data_source}"
@@ -2478,14 +2479,16 @@ def _delete_section(doc: Any, op: dict) -> str:
         if doc.Sections.Count <= 1:
             raise COMOperationError("delete_section", "文档至少需要一个分节")
 
-        # 取消分节符与其前一节合并
-        section = doc.Sections(section_num)
-        # 获取下一节(若有)的起始范围,然后取消分节
+        # 只删除分节符本身, 避免误删整节正文内容.
         if section_num < doc.Sections.Count:
-            # 将当前分节的起始处内容合并到上一分节
-            # 取消分节符
-            rng = section.Range
-            rng.Delete()
+            break_start = doc.Sections(section_num).Range.End - 1
+        else:
+            break_start = doc.Sections(section_num - 1).Range.End - 1
+
+        if break_start < 0:
+            raise COMOperationError("delete_section", f"无法定位分节符: section={section_num}")
+
+        doc.Range(break_start, break_start + 1).Delete()
         return f"deleted_section: {section_num}"
     except COMOperationError:
         raise

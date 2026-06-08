@@ -1,4 +1,4 @@
-"""Excel MCP 工具."""
+﻿"""Excel MCP 工具."""
 
 from office_mcp.compat import FastMCP
 from office_mcp.config import settings
@@ -492,7 +492,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             validate_path(csv_file)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _import_data(wb, {
                 "sheet": sheet,
                 "file_path": csv_file,
@@ -719,7 +719,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _unprotect_worksheet(wb, {"sheet": sheet, "password": password})
             return f"已取消保护: {sheet}"
         except OfficeMCPError as e:
@@ -736,7 +736,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_tab_color(wb, {"sheet": sheet, "color": color})
             return f"已设置标签颜色: {sheet} -> {color}"
         except OfficeMCPError as e:
@@ -771,7 +771,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _clear_range(wb, {"sheet": sheet, "range": range, "clear_type": clear_type})
             return f"已清除: {result}"
         except OfficeMCPError as e:
@@ -788,7 +788,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _copy_range(wb, {"sheet": sheet, "range": range})
             return f"已复制: {result}"
         except OfficeMCPError as e:
@@ -806,7 +806,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _paste_range(wb, {
                 "sheet": sheet,
                 "target_cell": target_cell,
@@ -827,7 +827,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _cut_range(wb, {"sheet": sheet, "range": range})
             return f"已剪切: {result}"
         except OfficeMCPError as e:
@@ -845,7 +845,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _delete_cells(wb, {"sheet": sheet, "range": range, "shift": shift})
             return f"已删除: {result}"
         except OfficeMCPError as e:
@@ -863,7 +863,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _insert_cells(wb, {"sheet": sheet, "range": range, "shift": shift})
             return f"已插入: {result}"
         except OfficeMCPError as e:
@@ -881,7 +881,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_row_height(wb, {"sheet": sheet, "row": row, "height": height})
             return f"已设置行高: {result}"
         except OfficeMCPError as e:
@@ -899,7 +899,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_column_width(wb, {"sheet": sheet, "column": column, "width": width})
             return f"已设置列宽: {result}"
         except OfficeMCPError as e:
@@ -916,7 +916,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _hide_rows(wb, {"sheet": sheet, "rows": rows})
             return f"已隐藏: {result}"
         except OfficeMCPError as e:
@@ -934,7 +934,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             charts = _list_charts(wb, {"sheet": sheet})
             return {"file_path": file_path, "count": len(charts), "charts": charts}
         except OfficeMCPError as e:
@@ -951,7 +951,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             info = _get_chart_info(wb, {"sheet": sheet, "chart_index": chart_index})
             return {"file_path": file_path, "sheet": sheet, "chart_index": chart_index, **info}
         except OfficeMCPError as e:
@@ -969,7 +969,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_chart_title(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -998,7 +998,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_chart_legend(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -1030,7 +1030,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_chart_series(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -1056,7 +1056,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _remove_chart_series(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -1089,7 +1089,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_chart_axis(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -1116,7 +1116,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _change_chart_type(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -1139,7 +1139,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             out_path = validate_path(output_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _export_chart(wb, {
                 "sheet": sheet,
                 "chart_index": chart_index,
@@ -1160,7 +1160,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _delete_chart(wb, {"sheet": sheet, "chart_index": chart_index})
             return f"已删除图表: {chart_index}"
         except OfficeMCPError as e:
@@ -1189,7 +1189,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_font(wb, {
                 "sheet": sheet,
                 "range": range,
@@ -1213,7 +1213,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_font_bold(wb, {"sheet": sheet, "range": range, "bold": bold})
             return f"已设置粗体: {result}"
         except OfficeMCPError as e:
@@ -1231,7 +1231,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_font_italic(wb, {"sheet": sheet, "range": range, "italic": italic})
             return f"已设置斜体: {result}"
         except OfficeMCPError as e:
@@ -1251,7 +1251,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_font_underline(wb, {"sheet": sheet, "range": range, "underline": underline})
             return f"已设置下划线: {result}"
         except OfficeMCPError as e:
@@ -1276,7 +1276,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_alignment(wb, {
                 "sheet": sheet,
                 "range": range,
@@ -1299,7 +1299,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_wrap_text(wb, {"sheet": sheet, "range": range, "wrap": wrap})
             return f"已设置换行: {result}"
         except OfficeMCPError as e:
@@ -1317,7 +1317,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_indent(wb, {"sheet": sheet, "range": range, "indent": indent})
             return f"已设置缩进: {result}"
         except OfficeMCPError as e:
@@ -1337,7 +1337,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_orientation(wb, {"sheet": sheet, "range": range, "orientation": orientation})
             return f"已设置文字方向: {result}"
         except OfficeMCPError as e:
@@ -1354,7 +1354,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _clear_format(wb, {"sheet": sheet, "range": range})
             return f"已清除格式: {result}"
         except OfficeMCPError as e:
@@ -1374,7 +1374,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _copy_format(wb, {
                 "sheet": sheet,
                 "source_range": source_range,
@@ -1399,7 +1399,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_page_orientation(wb, {"sheet": sheet, "orientation": orientation})
             return f"已设置页面方向: {orientation}"
         except OfficeMCPError as e:
@@ -1416,7 +1416,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_page_size(wb, {"sheet": sheet, "size": size})
             return f"已设置页面大小: {size}"
         except OfficeMCPError as e:
@@ -1447,7 +1447,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             op = {"sheet": sheet}
             if top is not None:
                 op["top"] = top
@@ -1477,7 +1477,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_header(wb, {"sheet": sheet, "text": text})
             return f"已设置页眉: {text}"
         except OfficeMCPError as e:
@@ -1494,7 +1494,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_footer(wb, {"sheet": sheet, "text": text})
             return f"已设置页脚: {text}"
         except OfficeMCPError as e:
@@ -1514,7 +1514,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_print_title(wb, {"sheet": sheet, "rows": rows, "columns": columns})
             return f"已添加打印标题: {result}"
         except OfficeMCPError as e:
@@ -1531,7 +1531,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_print_area(wb, {"sheet": sheet, "range": range})
             return f"已设置打印区域: {range}"
         except OfficeMCPError as e:
@@ -1551,7 +1551,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_page_break(wb, {"sheet": sheet, "cell": cell, "break_type": break_type})
             return f"已设置分页符: {result}"
         except OfficeMCPError as e:
@@ -1568,7 +1568,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_scale(wb, {"sheet": sheet, "scale": scale})
             return f"已设置缩放: {scale}%"
         except OfficeMCPError as e:
@@ -1588,7 +1588,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_fit_to_page(wb, {
                 "sheet": sheet,
                 "fit_width": fit_width,
@@ -1612,7 +1612,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_array_formula(wb, {"sheet": sheet, "range": range, "formula": formula})
             return f"已设置数组公式: {range}"
         except OfficeMCPError as e:
@@ -1629,7 +1629,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _evaluate_formula(wb, {"sheet": sheet, "cell": cell})
             return f"{cell} = {result['value']}"
         except OfficeMCPError as e:
@@ -1650,7 +1650,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _replace_formula(wb, {
                 "sheet": sheet, "range": range,
                 "find": find, "replace": replace,
@@ -1670,7 +1670,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _find_formula_cells(wb, {"sheet": sheet, "range": range})
             import json
             return json.dumps(result, ensure_ascii=False, default=str)
@@ -1688,7 +1688,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _convert_to_values(wb, {"sheet": sheet, "range": range})
             return f"已转换为值: {range}"
         except OfficeMCPError as e:
@@ -1705,7 +1705,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _get_formula_info(wb, {"sheet": sheet, "cell": cell})
             import json
             return json.dumps(result, ensure_ascii=False, default=str)
@@ -1723,7 +1723,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _define_name(wb, {"name": name, "refers_to": refers_to})
             return result
         except OfficeMCPError as e:
@@ -1747,7 +1747,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             op = {"sheet": sheet, "range": range, "style_name": style_name}
             if table_name:
                 op["table_name"] = table_name
@@ -1784,7 +1784,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _resize_table(wb, {
                 "sheet": sheet, "table_name": table_name, "range": range,
             })
@@ -1804,7 +1804,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_table_style(wb, {
                 "sheet": sheet, "table_name": table_name, "style_name": style_name,
             })
@@ -1824,7 +1824,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _show_table_totals(wb, {
                 "sheet": sheet, "table_name": table_name, "show": show,
             })
@@ -1847,7 +1847,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_table_column(wb, {
                 "sheet": sheet, "table_name": table_name,
                 "column_name": column_name, "formula": formula,
@@ -1868,7 +1868,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _remove_table_column(wb, {
                 "sheet": sheet, "table_name": table_name, "column_name": column_name,
             })
@@ -1887,7 +1887,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _delete_table(wb, {
                 "sheet": sheet, "table_name": table_name,
             })
@@ -1908,7 +1908,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_auto_filter(wb, {"sheet": sheet, "range": range})
             return result
         except OfficeMCPError as e:
@@ -1924,7 +1924,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _remove_auto_filter(wb, {"sheet": sheet})
             return result
         except OfficeMCPError as e:
@@ -1946,7 +1946,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             # 尝试转 int
             try:
                 key_int = int(key_column)
@@ -1977,7 +1977,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _advanced_filter(wb, {
                 "sheet": sheet, "range": range,
                 "criteria_range": criteria_range,
@@ -1999,7 +1999,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _remove_duplicates(wb, {
                 "sheet": sheet, "range": range, "columns": columns,
             })
@@ -2018,7 +2018,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _group_rows(wb, {"sheet": sheet, "range": range})
             return result
         except OfficeMCPError as e:
@@ -2035,7 +2035,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _ungroup_rows(wb, {"sheet": sheet, "range": range})
             return result
         except OfficeMCPError as e:
@@ -2052,7 +2052,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _group_columns(wb, {"sheet": sheet, "range": range})
             return result
         except OfficeMCPError as e:
@@ -2069,7 +2069,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _ungroup_columns(wb, {"sheet": sheet, "range": range})
             return result
         except OfficeMCPError as e:
@@ -2089,7 +2089,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _protect_workbook(wb, {
                 "password": password, "structure": structure, "windows": windows,
             })
@@ -2107,7 +2107,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _unprotect_workbook(wb, {"password": password})
             return "已撤销工作簿保护"
         except OfficeMCPError as e:
@@ -2123,7 +2123,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_open_password(wb, {"password": password})
             return "已设置打开密码 (调用 SaveAs 时生效)"
         except OfficeMCPError as e:
@@ -2139,7 +2139,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_write_reservation_password(wb, {"password": password})
             return result
         except OfficeMCPError as e:
@@ -2154,7 +2154,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _mark_as_final(wb, {})
             return "已标记为最终状态"
         except OfficeMCPError as e:
@@ -2170,7 +2170,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _recommend_read_only(wb, {"recommend": recommend})
             return result
         except OfficeMCPError as e:
@@ -2196,7 +2196,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             img_path = validate_path(image_path)  # 关键: 校验图片路径
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             op = {"sheet": sheet, "image_path": str(img_path), "cell": cell}
             if width is not None:
                 op["width"] = width
@@ -2217,7 +2217,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _list_shapes(wb, {"sheet": sheet})
             import json
             return json.dumps(result, ensure_ascii=False, default=str)
@@ -2236,7 +2236,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             op: dict = {"sheet": sheet}
             if index > 0:
                 op["index"] = index
@@ -2262,7 +2262,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_comment(wb, {
                 "sheet": sheet, "cell": cell, "text": text, "author": author,
             })
@@ -2281,7 +2281,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _delete_comment(wb, {"sheet": sheet, "cell": cell})
             return result
         except OfficeMCPError as e:
@@ -2352,7 +2352,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _recalculate(wb, {"full": full})
             return result
         except OfficeMCPError as e:
@@ -2368,7 +2368,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_calculation_mode(wb, {"mode": mode})
             return result
         except OfficeMCPError as e:
@@ -2389,7 +2389,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _set_iterative_calc(wb, {
                 "enable": enable,
                 "max_iterations": max_iterations,
@@ -2398,3 +2398,4 @@ def register_excel_tools(mcp: FastMCP) -> None:
             return result
         except OfficeMCPError as e:
             return f"错误: {e}"
+

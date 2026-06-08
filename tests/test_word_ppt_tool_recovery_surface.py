@@ -158,3 +158,51 @@ def test_powerpoint_media_and_save_entrypoints_use_ensure_document(
     assert "slide 1" in audio_result
     assert "slide 1" in media_result
     assert "pdf" in save_result
+
+
+def test_powerpoint_navigation_and_admin_entrypoints_use_ensure_document(
+    tmp_path: Path, monkeypatch
+) -> None:
+    fake_mcp = FakeMCP()
+    powerpoint_tools.register_ppt_tools(fake_mcp)
+    presentation = type("Presentation", (), {"Application": object()})()
+    calls: list[tuple[Path, bool]] = []
+
+    monkeypatch.setattr(powerpoint_tools, "validate_path", lambda raw: tmp_path / raw)
+    monkeypatch.setattr(
+        powerpoint_tools.office_manager,
+        "ensure_document",
+        lambda path, activate=False: calls.append((path, activate)) or presentation,
+    )
+    monkeypatch.setattr(powerpoint_tools, "_navigate_to_slide", lambda ppt, op: {"presentation_ok": ppt is presentation, "op": op})
+    monkeypatch.setattr(powerpoint_tools, "_list_templates", lambda app, op: {"app_ok": app is presentation.Application})
+    monkeypatch.setattr(powerpoint_tools, "_set_properties", lambda ppt, op: {"presentation_ok": ppt is presentation, "op": op})
+    monkeypatch.setattr(powerpoint_tools, "_get_properties", lambda ppt, op: {"presentation_ok": ppt is presentation})
+    monkeypatch.setattr(powerpoint_tools, "_repair_presentation", lambda ppt, op: {"presentation_ok": ppt is presentation})
+    monkeypatch.setattr(powerpoint_tools, "_compare_presentations", lambda app, op: {"app_ok": app is presentation.Application, "op": op})
+    monkeypatch.setattr(powerpoint_tools, "_merge_presentations", lambda app, op: {"app_ok": app is presentation.Application, "op": op})
+
+    nav_result = fake_mcp.tools["ppt_navigate_to_slide"]("deck.pptx", 3)
+    list_result = fake_mcp.tools["ppt_list_templates"]("deck.pptx")
+    set_result = fake_mcp.tools["ppt_set_properties"]("deck.pptx", title="Roadshow")
+    get_result = fake_mcp.tools["ppt_get_properties"]("deck.pptx")
+    repair_result = fake_mcp.tools["ppt_repair_presentation"]("deck.pptx")
+    compare_result = fake_mcp.tools["ppt_compare_presentations"]("deck.pptx", "left.pptx", "right.pptx")
+    merge_result = fake_mcp.tools["ppt_merge_presentations"]("deck.pptx", "target.pptx", ["source.pptx"])
+
+    assert calls == [
+        (tmp_path / "deck.pptx", True),
+        (tmp_path / "deck.pptx", False),
+        (tmp_path / "deck.pptx", False),
+        (tmp_path / "deck.pptx", False),
+        (tmp_path / "deck.pptx", False),
+        (tmp_path / "deck.pptx", False),
+        (tmp_path / "deck.pptx", False),
+    ]
+    assert "3" in nav_result
+    assert list_result["app_ok"] is True
+    assert "灞炴€" in set_result or isinstance(set_result, str)
+    assert get_result["presentation_ok"] is True
+    assert repair_result["presentation_ok"] is True
+    assert compare_result["app_ok"] is True
+    assert "1" in merge_result

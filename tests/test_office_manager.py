@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from office_mcp.compat import FallbackFastMCP
+from office_mcp.config import settings
 from office_mcp.core.errors import COMOperationError, OfficeNotInstalledError
 from office_mcp.core.office_manager import OfficeManager
 from office_mcp.operations.word_ops import (
@@ -156,6 +157,47 @@ def test_close_document_keeps_tracking_when_close_fails(tmp_path: Path, monkeypa
 
     assert manager._documents[path_key] is fake_doc
     assert manager._doc_types[path_key] == "word"
+
+
+def test_track_document_adopts_existing_handle(tmp_path: Path) -> None:
+    manager = OfficeManager()
+    doc_path = tmp_path / "merged.docx"
+    doc = object()
+
+    tracked = manager.track_document(doc_path, doc, app_type="word")
+
+    assert tracked is doc
+    assert manager._documents[str(doc_path.resolve())] is doc
+    assert manager._doc_types[str(doc_path.resolve())] == "word"
+
+
+def test_open_document_uses_parameterized_powerpoint_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = OfficeManager()
+    deck_path = tmp_path / "deck.pptx"
+    deck_path.touch()
+    open_calls: list[dict[str, object]] = []
+    fake_pres = object()
+
+    class FakePresentations:
+        def Open(self, path: str, **kwargs):  # noqa: N802
+            open_calls.append({"path": path, **kwargs})
+            return fake_pres
+
+    fake_app = type("App", (), {"Presentations": FakePresentations()})()
+
+    monkeypatch.setattr(manager, "_find_open_document", lambda file_path, app_type: None)
+    monkeypatch.setattr(manager, "_get_app", lambda app_type: fake_app)
+    monkeypatch.setattr(manager, "_retry_on_modal", lambda func, *args, **kwargs: func(*args))
+
+    doc = manager.open_document(deck_path)
+
+    assert doc is fake_pres
+    assert open_calls == [{
+        "path": str(deck_path),
+        "ReadOnly": False,
+        "Untitled": False,
+        "WithWindow": settings.ppt_visible,
+    }]
 
 
 def test_dispatch_app_maps_class_not_registered_to_office_not_installed(

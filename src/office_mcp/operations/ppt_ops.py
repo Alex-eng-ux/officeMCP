@@ -1,4 +1,4 @@
-"""PowerPoint COM 操作实现."""
+﻿"""PowerPoint COM 操作实现."""
 
 import ipaddress
 import json
@@ -11,10 +11,38 @@ from pathlib import Path
 from typing import Any
 
 from office_mcp.core.errors import COMOperationError
+from office_mcp.core.office_manager import _open_powerpoint_presentation
 from office_mcp.core.path_guard import validate_path
 from office_mcp.utils.icons import get_icon_url, search_icons
 
 logger = logging.getLogger(__name__)
+
+
+def _ppt_open_for_internal_flow(
+    app: Any,
+    file_path: str | Path,
+    *,
+    read_only: bool = False,
+    untitled: bool = False,
+) -> Any:
+    """Open a presentation for internal helper flows with explicit non-modal flags."""
+    return _open_powerpoint_presentation(
+        app,
+        file_path,
+        read_only=read_only,
+        untitled=untitled,
+        with_window=False,
+    )
+
+
+def _ppt_close_quietly(presentation: Any) -> None:
+    """Best-effort close for helper-opened presentations."""
+    if presentation is None:
+        return
+    try:
+        presentation.Close()
+    except Exception:
+        pass
 
 # 操作 op 中以 _path / _file 结尾或明确为路径字段的 key 集合
 _PATH_FIELDS = (
@@ -1110,7 +1138,7 @@ def _create_from_template(app: Any, op: dict) -> str:
     if not Path(template_path).exists():
         raise COMOperationError("create_from_template", f"模板文件不存在: {template_path}")
 
-    presentation = app.Presentations.Open(template_path)
+    presentation = _ppt_open_for_internal_flow(app, template_path, untitled=True)
     return f"created_from_template: {template_name or template_path}"
 
 
@@ -1753,10 +1781,12 @@ def _compare_presentations(app: Any, op: dict) -> dict:
     pres1_path = str(validate_path(pres1_path))
     pres2_path = str(validate_path(pres2_path))
 
+    pres1 = None
+    pres2 = None
     try:
         # 打开两个演示文稿进行比较
-        pres1 = app.Presentations.Open(pres1_path)
-        pres2 = app.Presentations.Open(pres2_path)
+        pres1 = _ppt_open_for_internal_flow(app, pres1_path, read_only=True)
+        pres2 = _ppt_open_for_internal_flow(app, pres2_path, read_only=True)
 
         differences = []
 
@@ -1782,10 +1812,6 @@ def _compare_presentations(app: Any, op: dict) -> dict:
                     "pres2": slide2.Shapes.Count,
                 })
 
-        # 关闭演示文稿（不保存）
-        pres1.Close()
-        pres2.Close()
-
         return {
             "status": "compared",
             "differences_count": len(differences),
@@ -1793,6 +1819,9 @@ def _compare_presentations(app: Any, op: dict) -> dict:
         }
     except Exception as e:
         raise COMOperationError("compare_presentations", str(e))
+    finally:
+        _ppt_close_quietly(pres2)
+        _ppt_close_quietly(pres1)
 
 
 def _merge_presentations(app: Any, op: dict) -> str:
@@ -1815,12 +1844,14 @@ def _merge_presentations(app: Any, op: dict) -> str:
     target_path = str(validate_path(target_path))
     source_paths = [str(validate_path(p)) for p in source_paths if p]
 
+    target_pres = None
+    source_pres = None
     try:
         # 打开目标演示文稿
-        target_pres = app.Presentations.Open(target_path)
+        target_pres = _ppt_open_for_internal_flow(app, target_path)
 
         for source_path in source_paths:
-            source_pres = app.Presentations.Open(source_path)
+            source_pres = _ppt_open_for_internal_flow(app, source_path, read_only=True)
 
             # 计算插入位置
             if insert_position < 0 or insert_position > target_pres.Slides.Count:
@@ -1837,12 +1868,16 @@ def _merge_presentations(app: Any, op: dict) -> str:
             # 更新插入位置
             insert_position = target_pres.Slides.Count
 
-            # 关闭源演示文稿
-            source_pres.Close()
+            _ppt_close_quietly(source_pres)
+            source_pres = None
 
+        target_pres.Save()
         return f"merge_presentations: merged {len(source_paths)} presentations into {target_path}"
     except Exception as e:
         raise COMOperationError("merge_presentations", str(e))
+    finally:
+        _ppt_close_quietly(source_pres)
+        _ppt_close_quietly(target_pres)
 
 
 # ============ Slides 类操作 (9 个新工具) ============

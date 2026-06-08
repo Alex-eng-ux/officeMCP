@@ -89,6 +89,25 @@ def _path_exists_and_nonempty(file_path: Path) -> bool:
         return False
 
 
+def _open_powerpoint_presentation(
+    app: Any,
+    file_path: Path | str,
+    *,
+    read_only: bool = False,
+    untitled: bool = False,
+    with_window: bool | None = None,
+) -> Any:
+    """Open a PowerPoint presentation with explicit modal-safe flags."""
+    if with_window is None:
+        with_window = _get_app_visibility("ppt")
+    return app.Presentations.Open(
+        str(file_path),
+        ReadOnly=bool(read_only),
+        Untitled=bool(untitled),
+        WithWindow=bool(with_window),
+    )
+
+
 class OfficeManager:
     """Manage Office COM app instances and tracked documents."""
 
@@ -169,6 +188,11 @@ class OfficeManager:
         self._documents[path_key] = doc
         self._doc_types[path_key] = app_type
         return doc
+
+    def track_document(self, file_path: Path, doc: Any, app_type: str | None = None) -> Any:
+        """Public helper to adopt an already-open Office document into manager state."""
+        normalized_type = app_type or self._get_app_type_by_path(file_path)
+        return self._remember_document(file_path, normalized_type, doc)
 
     def _forget_document(self, file_path: Path) -> None:
         """Forget a tracked document handle."""
@@ -381,7 +405,7 @@ class OfficeManager:
             if app_type == "excel":
                 return app.Workbooks.Open(str(file_path))
             if app_type == "ppt":
-                return app.Presentations.Open(str(file_path))
+                return _open_powerpoint_presentation(app, file_path)
             raise COMOperationError("open_document", f"Unsupported app type: {app_type}")
 
         try:

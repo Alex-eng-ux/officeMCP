@@ -1,4 +1,4 @@
-"""PowerPoint MCP 工具."""
+﻿"""PowerPoint MCP 工具."""
 
 from office_mcp.compat import FastMCP
 from office_mcp.config import settings
@@ -394,7 +394,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_master_background(ppt, {"color": color})
             return f"已设置母版背景颜色: {color}"
         except OfficeMCPError as e:
@@ -426,7 +426,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_master_shape(ppt, {
                 "shape": shape,
                 "left": left,
@@ -462,7 +462,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_theme_color(ppt, {
                 "color_name": color_name,
                 "target": target,
@@ -490,7 +490,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_theme_preset(ppt, {
                 "preset": preset,
                 "colors": colors or {},
@@ -527,7 +527,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=True)
             result = _navigate_to_slide(ppt, {"slide_index": slide_index})
             return f"已导航到幻灯片: {slide_index}"
         except OfficeMCPError as e:
@@ -573,7 +573,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _search_icons(ppt, {"query": query, "limit": limit})
             return result
         except OfficeMCPError as e:
@@ -603,7 +603,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _insert_icon(ppt, {
                 "slide_index": slide_index,
                 "icon_name": icon_name,
@@ -642,7 +642,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_smartart(ppt, {
                 "slide_index": slide_index,
                 "smartart_type": smartart_type,
@@ -678,7 +678,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_gradient_fill(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -712,7 +712,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_freeform_shape(ppt, {
                 "slide_index": slide_index,
                 "points": points or [],
@@ -748,7 +748,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _export_images(ppt, {
                 "output_path": output_path,
                 "slide_indices": slide_indices or [],
@@ -778,7 +778,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_slide_preview(ppt, {
                 "slide_index": slide_index,
                 "width": width,
@@ -802,7 +802,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _copy_to_clipboard(ppt, {"slide_index": slide_index})
             return f"已复制幻灯片到剪贴板: slide {slide_index}"
         except OfficeMCPError as e:
@@ -824,7 +824,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _export_html(ppt, {
                 "output_path": output_path,
                 "include_navigation": include_navigation,
@@ -851,7 +851,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _start_slideshow(ppt, {
                 "from_slide": from_slide,
                 "loop": loop,
@@ -870,7 +870,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _stop_slideshow(ppt, {})
             return "已停止放映"
         except OfficeMCPError as e:
@@ -886,7 +886,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _slideshow_next(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -902,7 +902,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _slideshow_previous(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -922,7 +922,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _slideshow_goto(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -938,7 +938,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_slideshow_status(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -972,7 +972,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_chart(ppt, {
                 "slide_index": slide_index,
                 "chart_type": chart_type,
@@ -1004,7 +1004,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_chart_data(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1030,7 +1030,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_chart_data(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1061,7 +1061,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _format_chart(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1097,7 +1097,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _format_chart_axis(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1134,7 +1134,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_chart_series(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1165,7 +1165,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _change_chart_type(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1191,7 +1191,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_animations(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -1219,7 +1219,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _update_animation(ppt, {
                 "slide_index": slide_index,
                 "animation_index": animation_index,
@@ -1247,7 +1247,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _remove_animation(ppt, {
                 "slide_index": slide_index,
                 "animation_index": animation_index,
@@ -1270,7 +1270,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _clear_animations(ppt, {"slide_index": slide_index})
             return f"已清除所有动画: slide {slide_index}"
         except OfficeMCPError as e:
@@ -1294,7 +1294,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_animation_trigger(ppt, {
                 "slide_index": slide_index,
                 "animation_index": animation_index,
@@ -1322,7 +1322,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _copy_animation(ppt, {
                 "slide_index": slide_index,
                 "source_shape_index": source_shape_index,
@@ -1356,7 +1356,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_comment(ppt, {
                 "slide_index": slide_index,
                 "text": text,
@@ -1382,7 +1382,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_comments(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -1404,7 +1404,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _delete_comment(ppt, {
                 "slide_index": slide_index,
                 "comment_index": comment_index,
@@ -1435,7 +1435,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_tags(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1462,7 +1462,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_tags(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1489,7 +1489,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_default_font(ppt, {
                 "font_name": font_name,
                 "font_size": font_size,
@@ -1515,7 +1515,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _replace_font(ppt, {
                 "old_font": old_font,
                 "new_font": new_font,
@@ -1548,7 +1548,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _crop_picture(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1583,7 +1583,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_picture_format(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1616,7 +1616,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             out_path = validate_path(output_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _export_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1645,7 +1645,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_shape_visibility(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1671,7 +1671,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _select_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -1690,7 +1690,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_selection(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -1710,7 +1710,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_view(ppt, {"view_type": view_type})
             return f"已设置视图模式: {view_type}"
         except OfficeMCPError as e:
@@ -1734,7 +1734,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _copy_animation_from_shape(ppt, {
                 "slide_index": slide_index,
                 "source_shape_index": source_shape_index,
@@ -1768,7 +1768,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_picture_from_url(ppt, {
                 "slide_index": slide_index,
                 "url": url,
@@ -1806,7 +1806,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             svg_validated = validate_path(svg_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_svg_icon(ppt, {
                 "slide_index": slide_index,
                 "svg_path": str(svg_validated),
@@ -1851,7 +1851,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _batch_apply_format(ppt, {
                 "slide_index": slide_index,
                 "shape_indices": shape_indices or [],
@@ -1888,7 +1888,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_default_shape_style(ppt, {
                 "fill_color": fill_color,
                 "line_color": line_color,
@@ -1913,7 +1913,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_shape_count(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -1949,7 +1949,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _build_freeform_path(ppt, {
                 "slide_index": slide_index,
                 "points": points or [],
@@ -1980,7 +1980,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_node_positions(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2007,7 +2007,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_node_positions(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2043,7 +2043,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _insert_node(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2075,7 +2075,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _delete_node(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2105,7 +2105,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_node_editing_type(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2136,7 +2136,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_segment_type(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2291,7 +2291,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _modify_smartart(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2314,7 +2314,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_smartart_layouts(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -2333,7 +2333,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _undo(ppt, {"steps": steps})
             return f"已撤销 {steps} 步操作"
         except OfficeMCPError as e:
@@ -2350,7 +2350,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _redo(ppt, {"steps": steps})
             return f"已重做 {steps} 步操作"
         except OfficeMCPError as e:
@@ -2378,7 +2378,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _copy_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2406,7 +2406,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _copy_formatting(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2431,7 +2431,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _paste_formatting(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2454,7 +2454,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _duplicate_slide_to_end(ppt, {
                 "slide_index": slide_index,
             })
@@ -2484,7 +2484,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _align_shapes(ppt, {
                 "slide_index": slide_index,
                 "shape_indices": shape_indices or [],
@@ -2513,7 +2513,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _distribute_shapes(ppt, {
                 "slide_index": slide_index,
                 "shape_indices": shape_indices or [],
@@ -2541,7 +2541,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_slide_size(ppt, {
                 "width": width,
                 "height": height,
@@ -2569,7 +2569,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _flip_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2597,7 +2597,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _merge_shapes(ppt, {
                 "slide_index": slide_index,
                 "shape_indices": shape_indices or [],
@@ -2627,7 +2627,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _rotate_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2656,7 +2656,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _lock_aspect_ratio(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2690,7 +2690,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_glow(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2726,7 +2726,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_reflection(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2757,7 +2757,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_soft_edge(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2779,7 +2779,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_app_info(ppt.Application, {})
             return result
         except OfficeMCPError as e:
@@ -2795,7 +2795,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_active_window(ppt.Application, {})
             return result
         except OfficeMCPError as e:
@@ -2812,7 +2812,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_window_state(ppt.Application, {"state": state})
             return f"已设置窗口状态: {state}"
         except OfficeMCPError as e:
@@ -2828,7 +2828,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_presentations(ppt.Application, {})
             return result
         except OfficeMCPError as e:
@@ -2844,7 +2844,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_screen_tip(ppt.Application, {})
             return result
         except OfficeMCPError as e:
@@ -2862,7 +2862,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_presentation_info(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -2878,7 +2878,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_templates(ppt.Application, {})
             return result
         except OfficeMCPError as e:
@@ -2906,7 +2906,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_properties(ppt, {
                 "title": title,
                 "author": author,
@@ -2928,7 +2928,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_properties(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -2963,7 +2963,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _repair_presentation(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -2987,7 +2987,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
             path = validate_path(file_path)
             pres1_path = validate_path(presentation1_path)
             pres2_path = validate_path(presentation2_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _compare_presentations(ppt.Application, {
                 "presentation1_path": str(pres1_path),
                 "presentation2_path": str(pres2_path),
@@ -3016,7 +3016,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
             path = validate_path(file_path)
             target = validate_path(target_path)
             sources = [validate_path(s) for s in source_paths]
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _merge_presentations(ppt.Application, {
                 "target_path": str(target),
                 "source_paths": [str(s) for s in sources],
@@ -3040,7 +3040,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _duplicate_slide(ppt, {
                 "slide_index": slide_index,
                 "insert_after": insert_after or slide_index,
@@ -3061,7 +3061,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _move_slide(ppt, {
                 "slide_index": slide_index,
                 "new_position": new_position,
@@ -3080,7 +3080,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_slides(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -3097,7 +3097,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_slide_info(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -3114,7 +3114,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_slide_notes(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -3140,7 +3140,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_slide_notes_extended(ppt, {
                 "slide_index": slide_index,
                 "text": text,
@@ -3161,7 +3161,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_slide_layouts(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -3181,7 +3181,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _apply_layout(ppt, {
                 "slide_index": slide_index,
                 "layout": layout,
@@ -3200,7 +3200,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_slide_size(ppt, {})
             return result
         except OfficeMCPError as e:
@@ -3219,7 +3219,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _list_shapes(ppt, {"slide_index": slide_index})
             return result
         except OfficeMCPError as e:
@@ -3237,7 +3237,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_shape_info(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3276,7 +3276,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _update_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3304,7 +3304,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _delete_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3331,7 +3331,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _set_zorder(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3367,7 +3367,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_line(ppt, {
                 "slide_index": slide_index,
                 "begin_x": begin_x,
@@ -3415,7 +3415,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_textbox(ppt, {
                 "slide_index": slide_index,
                 "text": text,
@@ -3462,7 +3462,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             img_path = validate_path(image_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_picture_extended(ppt, {
                 "slide_index": slide_index,
                 "image_path": str(img_path),
@@ -3497,7 +3497,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _duplicate_shape(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3524,7 +3524,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _group_shapes(ppt, {
                 "slide_index": slide_index,
                 "shape_indices": shape_indices or [],
@@ -3552,7 +3552,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_text(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3577,7 +3577,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_get_text(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3617,7 +3617,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_format_text_range(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3659,7 +3659,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_paragraph_format(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3700,7 +3700,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_bullets(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3736,7 +3736,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_find_replace_text(ppt, {
                 "slide_index": slide_index,
                 "find_text": find_text,
@@ -3763,7 +3763,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_get_textframe(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3785,7 +3785,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_extract_text_as_markdown(ppt, {
                 "slide_index": slide_index,
             })
@@ -3814,7 +3814,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_font_size(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3847,7 +3847,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_font_color(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -3874,7 +3874,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_list_placeholders(ppt, {
                 "slide_index": slide_index,
             })
@@ -3897,7 +3897,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_get_placeholder(ppt, {
                 "slide_index": slide_index,
                 "placeholder_index": placeholder_index,
@@ -3923,7 +3923,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_placeholder(ppt, {
                 "slide_index": slide_index,
                 "placeholder_index": placeholder_index,
@@ -3948,7 +3948,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_clear_placeholder(ppt, {
                 "slide_index": slide_index,
                 "placeholder_index": placeholder_index,
@@ -3972,7 +3972,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_get_placeholder_type(ppt, {
                 "slide_index": slide_index,
                 "placeholder_index": placeholder_index,
@@ -4004,7 +4004,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_resize_placeholder(ppt, {
                 "slide_index": slide_index,
                 "placeholder_index": placeholder_index,
@@ -4046,7 +4046,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             if picture_path:
                 validate_path(picture_path)
             result = _ppt_set_fill(ppt, {
@@ -4086,7 +4086,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_line(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4126,7 +4126,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_shadow(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4166,7 +4166,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_get_table_cells(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4200,7 +4200,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_table_cells(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4233,7 +4233,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_batch_set_table_data(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4328,7 +4328,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_add_table_row(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4355,7 +4355,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_delete_table_row(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4382,7 +4382,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_add_table_column(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4409,7 +4409,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_delete_table_column(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4436,7 +4436,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_table_style(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4469,7 +4469,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_set_table_borders(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4497,7 +4497,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_get_table_info(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4529,7 +4529,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ppt_resize_table(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4567,7 +4567,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_connector(ppt, {
                 "slide_index": slide_index,
                 "connector_type": connector_type,
@@ -4605,7 +4605,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _format_connector(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4636,7 +4636,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _ungroup_ppt_shapes(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4660,7 +4660,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_ppt_group_items(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4690,7 +4690,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _add_ppt_hyperlink(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4714,7 +4714,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _get_ppt_hyperlinks(ppt, {"slide_index": slide_index})
             return {"slide_index": slide_index, "hyperlinks": result}
         except OfficeMCPError as e:
@@ -4735,7 +4735,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _remove_ppt_hyperlink(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -4743,5 +4743,6 @@ def register_ppt_tools(mcp: FastMCP) -> None:
             return f"已移除超链接: slide {slide_index}, shape {shape_index}"
         except OfficeMCPError as e:
             return f"错误: {e}"
+
 
 
