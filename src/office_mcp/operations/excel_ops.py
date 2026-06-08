@@ -89,6 +89,25 @@ def _col_idx_to_letters(col: int) -> str:
     return result
 
 
+def _excel_require_active_window(workbook: Any, operation: str) -> Any:
+    """Return Excel's active window or raise a clear error."""
+    app = getattr(workbook, "Application", None)
+    active_window = getattr(app, "ActiveWindow", None) if app is not None else None
+    if active_window is None:
+        raise COMOperationError(operation, "Excel active window is unavailable; activate the workbook before changing the view")
+    return active_window
+
+
+def _excel_external_range_address(range_obj: Any) -> str:
+    """Return a pivot-safe external address string for a range."""
+    try:
+        return str(range_obj.Address(True, True, 1, True))
+    except Exception:
+        worksheet = getattr(range_obj, "Worksheet", None)
+        sheet_name = getattr(worksheet, "Name", "Sheet1")
+        return f"'{sheet_name}'!{range_obj.Address}"
+
+
 def _execute_excel_operation(workbook: Any, op: dict) -> Any:
     """执行单个 Excel 操作."""
     op_type = op.get("type", "")
@@ -700,6 +719,8 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
     range_str = op.get("range", "A1:A10")
     validation_type = op.get("type", "list")
     formula1 = op.get("formula1", "")
+    formula2 = op.get("formula2", "")
+    operator_name = op.get("operator", "")
 
     # 验证类型映射
     type_map = {
@@ -714,6 +735,8 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
 
     validation_type_val = type_map.get(validation_type, 3)
     range_obj = sheet.Range(range_str)
+    if not formula1:
+        raise COMOperationError("add_data_validation", "formula1 is required")
 
     # 先删除已有验证，避免冲突
     try:
@@ -724,20 +747,32 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
     try:
         # list 类型 (Type=3) 不需要 Operator 参数，Formula1 不能为空
         if validation_type_val == 3:  # xlValidateList
-            if not formula1:
-                formula1 = "a,b,c"
             range_obj.Validation.Add(
                 Type=validation_type_val,
                 AlertStyle=1,  # xlValidAlertStop
                 Formula1=formula1,
             )
         else:
-            range_obj.Validation.Add(
-                Type=validation_type_val,
-                AlertStyle=1,  # xlValidAlertStop
-                Operator=0,
-                Formula1=formula1 if formula1 else "0",
-            )
+            operator_map = {
+                "between": 1,
+                "not_between": 2,
+                "equal": 3,
+                "not_equal": 4,
+                "greater": 5,
+                "less": 6,
+                "greater_equal": 7,
+                "less_equal": 8,
+            }
+            validation_kwargs = {
+                "Type": validation_type_val,
+                "AlertStyle": 1,
+                "Formula1": formula1,
+            }
+            if operator_name in operator_map:
+                validation_kwargs["Operator"] = operator_map[operator_name]
+            if formula2:
+                validation_kwargs["Formula2"] = formula2
+            range_obj.Validation.Add(**validation_kwargs)
     except Exception as e:
         raise COMOperationError("add_data_validation", str(e))
     return f"added_data_validation: {range_str} ({validation_type})"
@@ -991,10 +1026,11 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
 
     # 创建数据透视表缓存 (使用地址字符串更可靠)
     source_data_addr = source_sheet.Range(source_range)
+    source_data_ref = _excel_external_range_address(source_data_addr)
     try:
         pivot_cache = workbook.PivotCaches.Create(
             SourceType=1,  # xlDatabase
-            SourceData=source_data_addr,
+            SourceData=source_data_ref,
         )
     except Exception as e:
         raise COMOperationError("create_pivot_table", f"PivotCaches.Create 失败: {e}")
@@ -1137,7 +1173,9 @@ def _add_slicer(workbook: Any, op: dict) -> str:
 
         # 查找数据透视表
         pivot_table = None
-        for pt in pivot_sheet.PivotTables():
+        pivot_tables = pivot_sheet.PivotTables()
+        for index in range(1, pivot_tables.Count + 1):
+            pt = pivot_tables(index)
             if not pivot_name or pt.Name == pivot_name:
                 pivot_table = pt
                 break
@@ -1146,7 +1184,14 @@ def _add_slicer(workbook: Any, op: dict) -> str:
             raise COMOperationError("add_slicer", f"未找到数据透视表: {pivot_name}")
 
         # 添加切片器缓存
-        slicer_cache = workbook.SlicerCaches.Add(pivot_table, field_name)
+        slicer_caches = workbook.SlicerCaches
+        try:
+            slicer_cache = slicer_caches.Add2(pivot_table, field_name)
+        except Exception:
+            try:
+                slicer_cache = slicer_caches.Add(pivot_table, field_name)
+            except Exception as e:
+                raise COMOperationError("add_slicer", f"Slicer API unavailable for field '{field_name}': {e}")
 
         # 添加切片器
         slicer = slicer_cache.Slicers.Add(
@@ -3142,7 +3187,7 @@ def _set_view_zoom(workbook: Any, op: dict) -> str:
         )
     # 通过激活并设置 zoom
     sheet.Activate()
-    active_window = workbook.Application.ActiveWindow
+    active_window = _excel_require_active_window(workbook, "set_view_zoom")
     active_window.Zoom = zoom
     return f"set_view_zoom: {zoom}%"
 
@@ -3157,7 +3202,7 @@ def _set_view_gridlines(workbook: Any, op: dict) -> str:
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     show = op.get("show", True)
     sheet.Activate()
-    workbook.Application.ActiveWindow.DisplayGridlines = show
+    _excel_require_active_window(workbook, "set_view_gridlines").DisplayGridlines = show
     return f"set_view_gridlines: {show}"
 
 
@@ -3171,7 +3216,7 @@ def _set_view_headings(workbook: Any, op: dict) -> str:
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     show = op.get("show", True)
     sheet.Activate()
-    workbook.Application.ActiveWindow.DisplayHeadings = show
+    _excel_require_active_window(workbook, "set_view_headings").DisplayHeadings = show
     return f"set_view_headings: {show}"
 
 

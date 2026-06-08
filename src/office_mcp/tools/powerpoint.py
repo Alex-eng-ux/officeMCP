@@ -2174,7 +2174,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             video_p = validate_path(video_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=True)
             result = _add_video(ppt, {
                 "slide_index": slide_index,
                 "video_path": str(video_p),
@@ -2210,7 +2210,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             audio_p = validate_path(audio_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=True)
             result = _add_audio(ppt, {
                 "slide_index": slide_index,
                 "audio_path": str(audio_p),
@@ -2250,7 +2250,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=True)
             result = _set_media_settings(ppt, {
                 "slide_index": slide_index,
                 "shape_index": shape_index,
@@ -2947,7 +2947,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             out_path = validate_path(output_path)
-            ppt = office_manager.get_document(path)
+            ppt = office_manager.ensure_document(path, activate=False)
             result = _save_as(ppt, {"file_path": str(out_path), "format": format})
             return f"已另存为: {output_path}, 格式: {format}"
         except OfficeMCPError as e:

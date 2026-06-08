@@ -97,6 +97,8 @@ Installed console script:
 
 If your MCP client handles large tool surfaces well, the combined server is still available. If your client shows only a small subset of tools, or appears to "lose" Word/Excel/PPT tools after startup, switch to the split configuration above.
 
+Important: on some MCP clients, especially agent clients that lazily inject tools into a fresh conversation, a small visible subset does not necessarily mean the server actually lost tools. The Office MCP server may still be exposing the full Word, Excel, and PowerPoint surface, while the client only injects a smaller subset up front and discovers the rest later. In Codex-style clients, this often shows up as "only a few Office tools are visible at first" even though the remaining tools can still be surfaced through client-side discovery such as `tool_search`.
+
 Python module entry point:
 
 ```json
@@ -154,12 +156,13 @@ This repository is designed to work across different MCP-capable agent clients, 
 
 - Some clients handle large MCP namespaces well and can use the combined `office-mcp` entrypoint.
 - Some clients degrade when a single MCP server exposes a very large tool surface with long descriptions and schemas.
+- Some clients also lazily inject only part of that surface into a new conversation. In that case, the missing tools may still exist server-side and can often be discovered later by the client.
 - If you observe missing tools in the client UI or only a tiny subset of Office tools appearing, use the split entrypoints:
   - `office_mcp.server_word`
   - `office_mcp.server_excel`
   - `office_mcp.server_powerpoint`
 
-This split configuration is currently the safest default for general agent compatibility.
+This split configuration is currently the safest default for general agent compatibility, best upfront tool visibility, and fewer false alarms about "lost" tools.
 
 ## Core capabilities
 

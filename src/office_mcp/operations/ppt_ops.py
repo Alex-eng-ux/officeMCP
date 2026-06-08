@@ -199,6 +199,17 @@ def _ppt_delete_merge_metadata(shape: Any, row: int, col: int) -> None:
         pass
 
 
+def _ppt_require_output(path_value: str, operation: str) -> Path:
+    """Validate an output artifact exists and is non-empty."""
+    artifact = Path(path_value)
+    try:
+        if artifact.exists() and artifact.stat().st_size > 0:
+            return artifact
+    except OSError:
+        pass
+    raise COMOperationError(operation, f"Expected output artifact was not created: {path_value}")
+
+
 
 def apply_ppt_operations(presentation: Any, operations: list[dict]) -> list[dict]:
     """对 PowerPoint 演示文稿执行批量操作.
@@ -1683,6 +1694,7 @@ def _save_as(presentation: Any, op: dict) -> str:
 
     try:
         presentation.SaveAs(file_path, FileFormat=format_val)
+        _ppt_require_output(file_path, "save_as")
         return f"save_as: {file_path}, format={format_name}"
     except Exception as e:
         raise COMOperationError("save_as", str(e))
@@ -3948,6 +3960,7 @@ def _export_images(presentation: Any, op: dict) -> dict:
             else:
                 slide.Export(str(file_path), format_val)
 
+            _ppt_require_output(str(file_path), "export_images")
             exported_files.append(str(file_path))
         except Exception as e:
             logger.warning(f"导出幻灯片 {idx} 失败: {e}")

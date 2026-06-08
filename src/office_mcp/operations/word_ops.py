@@ -608,14 +608,28 @@ def _check_heading_hierarchy(doc: Any) -> list[dict]:
     return issues
 
 
+def _document_end_insertion_range(doc: Any) -> Any:
+    """Return a collapsed insertion range just before Word's final end marker."""
+    content = doc.Content
+    end_value = getattr(content, "End", None)
+    if end_value is None or not hasattr(doc, "Range"):
+        return content
+    end_pos = max(int(end_value) - 1, 0)
+    return doc.Range(end_pos, end_pos)
+
+
 def _add_paragraph(doc: Any, op: dict) -> str:
     """添加段落."""
     text = op.get("text", "")
     style = op.get("style", "")
     alignment = op.get("alignment", "left")
 
-    paragraph = doc.Content.Paragraphs.Add()
-    paragraph.Range.Text = text
+    paragraph_count_before = doc.Paragraphs.Count
+    insert_range = _document_end_insertion_range(doc)
+    insert_range.Collapse(Direction=0)  # 0 = wdCollapseEnd
+    insert_range.InsertAfter(f"{text}\r")
+    paragraph_index = min(paragraph_count_before, doc.Paragraphs.Count)
+    paragraph = doc.Paragraphs(paragraph_index)
     if style:
         try:
             paragraph.Style = style
@@ -636,7 +650,7 @@ def _insert_table(doc: Any, op: dict) -> str:
     data = op.get("data", [])
 
     # 在文档末尾添加表格
-    range_end = doc.Content
+    range_end = _document_end_insertion_range(doc)
     range_end.Collapse(Direction=0)  # 0 = wdCollapseEnd
 
     table = doc.Tables.Add(range_end, rows, columns)

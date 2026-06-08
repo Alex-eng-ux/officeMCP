@@ -81,6 +81,14 @@ def _normalize_path_key(file_path: Path) -> str:
     return str(file_path.resolve())
 
 
+def _path_exists_and_nonempty(file_path: Path) -> bool:
+    """Return whether a file exists and is non-empty."""
+    try:
+        return file_path.exists() and file_path.stat().st_size > 0
+    except OSError:
+        return False
+
+
 class OfficeManager:
     """Manage Office COM app instances and tracked documents."""
 
@@ -208,8 +216,8 @@ class OfficeManager:
             except Exception as vis_err:  # noqa: BLE001
                 # PowerPoint may reject Visible=False when presentations are open
                 logger.debug("Could not set %s Visible=%s: %s", progid, _get_app_visibility(app_type), vis_err)
-            # Suppress modal dialogs for Excel/Word (e.g. "file already exists" on SaveAs)
-            if app_type in ("excel", "word"):
+            # Suppress modal dialogs for unattended automation where supported.
+            if app_type in ("excel", "word", "ppt"):
                 try:
                     app.DisplayAlerts = 0  # wdAlertsNone / xlAlertsNone
                 except Exception:  # noqa: BLE001
@@ -473,8 +481,36 @@ class OfficeManager:
         """Return a live document and optionally make it active."""
         doc = self.get_document(file_path, require_active=False)
         if activate:
+            self._activate_document(file_path, doc)
             self._active_file = file_path
         return doc
+
+    def _activate_document(self, file_path: Path, doc: Any) -> None:
+        """Best-effort activation for window-sensitive Office operations."""
+        app_type = self._get_app_type_by_path(file_path)
+
+        with contextlib.suppress(Exception):
+            doc.Activate()
+
+        if app_type == "excel":
+            with contextlib.suppress(Exception):
+                windows = getattr(doc, "Windows", None)
+                if windows is not None and windows.Count >= 1:
+                    windows(1).Activate()
+            with contextlib.suppress(Exception):
+                sheet = getattr(doc, "ActiveSheet", None)
+                if sheet is not None:
+                    sheet.Activate()
+        elif app_type == "ppt":
+            with contextlib.suppress(Exception):
+                windows = getattr(doc, "Windows", None)
+                if windows is not None and windows.Count >= 1:
+                    windows(1).Activate()
+        elif app_type == "word":
+            with contextlib.suppress(Exception):
+                active_window = getattr(doc, "ActiveWindow", None)
+                if active_window is not None:
+                    active_window.Activate()
 
     def activate_app(self, app_type: str, file_path: Path | None = None) -> dict[str, Any]:
         """Activate an Office app and optionally a specific file."""
@@ -556,6 +592,7 @@ class OfficeManager:
                 logger.warning("Save probe failed for %s: %s", path_key, probe_error)
 
         # Phase 3: Close
+        close_succeeded = False
         try:
             def _close() -> None:
                 if app_type == "word":
@@ -566,6 +603,7 @@ class OfficeManager:
                     doc.Close()
 
             self._retry_on_modal(_close)
+            close_succeeded = True
             logger.info("Closed Office file: %s", path_key)
         except Exception as close_error:  # noqa: BLE001
             if save_succeeded:
@@ -581,11 +619,13 @@ class OfficeManager:
                         doc.Close(SaveChanges=True)
                     elif app_type == "ppt":
                         doc.Close()
+                    close_succeeded = True
                     logger.info("Closed Office file with SaveChanges=True fallback: %s", path_key)
                 except Exception as fallback_close_error:  # noqa: BLE001
                     logger.warning("Fallback close also failed for %s: %s", path_key, fallback_close_error)
         finally:
-            self._forget_document(file_path)
+            if close_succeeded:
+                self._forget_document(file_path)
 
     def export_pdf(self, file_path: Path, output_path: Path | None = None) -> Path:
         """Export a tracked document to PDF."""
@@ -606,6 +646,9 @@ class OfficeManager:
                 raise COMOperationError("export_pdf", f"Unsupported app type: {app_type}")
         except Exception as error:  # noqa: BLE001
             raise COMOperationError("export_pdf", str(error)) from error
+
+        if not _path_exists_and_nonempty(output_path):
+            raise COMOperationError("export_pdf", f"PDF export did not materialize on disk: {output_path}")
 
         logger.info("Exported PDF for %s -> %s", path_key, output_path)
         return output_path

@@ -174,3 +174,99 @@ def test_excel_list_tables_uses_recovery_path(
 
     assert calls == [(workbook_path, False)]
     assert json.loads(result) == [{"name": "SalesTable", "sheet": "Summary", "workbook_id": id(workbook)}]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_kwargs", "expected_activate", "stub_name", "expected_fragment"),
+    [
+        (
+            "excel_add_data_validation",
+            {
+                "sheet": "Summary",
+                "range": "A2:A20",
+                "validation_type": "whole",
+                "formula1": "1",
+                "operator": "greater_equal",
+                "formula2": "",
+            },
+            False,
+            "_add_data_validation",
+            "A2:A20",
+        ),
+        (
+            "excel_add_slicer",
+            {
+                "target_sheet": "Dashboard",
+                "pivot_sheet": "Pivot",
+                "field_name": "Region",
+                "pivot_name": "PivotTable_1",
+            },
+            False,
+            "_add_slicer",
+            "Region",
+        ),
+        (
+            "excel_create_pivot_table",
+            {
+                "source_sheet": "Raw",
+                "source_range": "A1:D20",
+                "target_sheet": "Pivot",
+                "target_cell": "A3",
+                "row_fields": ["Region"],
+                "column_fields": ["Month"],
+                "data_fields": {"Sales": "sum"},
+            },
+            True,
+            "_create_pivot_table",
+            "workbook_id",
+        ),
+        (
+            "excel_set_view_zoom",
+            {"sheet": "Summary", "zoom": 125},
+            True,
+            "_set_view_zoom",
+            "workbook_id",
+        ),
+        (
+            "excel_set_view_gridlines",
+            {"sheet": "Summary", "show": False},
+            True,
+            "_set_view_gridlines",
+            "workbook_id",
+        ),
+        (
+            "excel_set_view_headings",
+            {"sheet": "Summary", "show": False},
+            True,
+            "_set_view_headings",
+            "workbook_id",
+        ),
+    ],
+)
+def test_excel_advanced_tools_route_through_ensure_document(
+    excel_tool_map: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tool_name: str,
+    tool_kwargs: dict[str, object],
+    expected_activate: bool,
+    stub_name: str,
+    expected_fragment: str,
+) -> None:
+    workbook = object()
+    workbook_path = tmp_path / "sheet.xlsx"
+    calls: list[tuple[Path, bool]] = []
+
+    _stub_validate_path(monkeypatch)
+    monkeypatch.setattr(excel_tools.office_manager, "get_document", _fail_get_document)
+    monkeypatch.setattr(
+        excel_tools.office_manager,
+        "ensure_document",
+        lambda path, activate=False: calls.append((path, activate)) or workbook,
+    )
+    monkeypatch.setattr(excel_tools, stub_name, lambda wb, options: {"workbook_id": id(wb), "options": options})
+
+    result = excel_tool_map[tool_name](str(workbook_path), **tool_kwargs)
+
+    assert calls == [(workbook_path, expected_activate)]
+    assert expected_fragment in str(result)

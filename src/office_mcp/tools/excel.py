@@ -219,7 +219,15 @@ def register_excel_tools(mcp: FastMCP) -> None:
             return f"错误: {e}"
 
     @mcp.tool()
-    def excel_add_data_validation(file_path: str, sheet: str, range: str, validation_type: str = "list", formula1: str = "") -> str:
+    def excel_add_data_validation(
+        file_path: str,
+        sheet: str,
+        range: str,
+        validation_type: str = "list",
+        formula1: str = "",
+        operator: str = "",
+        formula2: str = "",
+    ) -> str:
         """添加数据验证.
 
         Args:
@@ -232,7 +240,17 @@ def register_excel_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             wb = office_manager.ensure_document(path, activate=False)
-            result = _add_data_validation(wb, {"sheet": sheet, "range": range, "type": validation_type, "formula1": formula1})
+            result = _add_data_validation(
+                wb,
+                {
+                    "sheet": sheet,
+                    "range": range,
+                    "type": validation_type,
+                    "formula1": formula1,
+                    "operator": operator,
+                    "formula2": formula2,
+                },
+            )
             return f"已添加数据验证: {range}"
         except OfficeMCPError as e:
             return f"错误: {e}"
@@ -414,7 +432,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=False)
             result = _add_named_range(wb, {"name": name, "refers_to": refers_to})
             return f"已添加命名范围: {name}"
         except OfficeMCPError as e:
@@ -446,7 +464,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _create_pivot_table(wb, {
                 "source_sheet": source_sheet,
                 "source_range": source_range,
@@ -497,7 +515,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             validate_path(export_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _export_data(wb, {
                 "sheet": sheet,
                 "export_path": export_path,
@@ -590,7 +608,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _copy_worksheet(wb, {
                 "sheet": sheet,
                 "new_name": new_name,
@@ -611,7 +629,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _delete_worksheet(wb, {"sheet": sheet})
             return f"已删除工作表: {result}"
         except OfficeMCPError as e:
@@ -631,7 +649,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _move_worksheet(wb, {
                 "sheet": sheet,
                 "position": position,
@@ -651,7 +669,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _hide_worksheet(wb, {"sheet": sheet})
             return f"已隐藏工作表: {sheet}"
         except OfficeMCPError as e:
@@ -667,7 +685,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _show_worksheet(wb, {"sheet": sheet})
             return f"已显示工作表: {sheet}"
         except OfficeMCPError as e:
@@ -684,7 +702,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _protect_worksheet(wb, {"sheet": sheet, "password": password})
             return f"已保护工作表: {sheet}"
         except OfficeMCPError as e:
@@ -2282,7 +2300,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _set_view_zoom(wb, {"sheet": sheet, "zoom": zoom})
             return result
         except OfficeMCPError as e:
@@ -2299,7 +2317,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _set_view_gridlines(wb, {"sheet": sheet, "show": show})
             return result
         except OfficeMCPError as e:
@@ -2316,7 +2334,7 @@ def register_excel_tools(mcp: FastMCP) -> None:
         """
         try:
             path = validate_path(file_path)
-            wb = office_manager.get_document(path)
+            wb = office_manager.ensure_document(path, activate=True)
             result = _set_view_headings(wb, {"sheet": sheet, "show": show})
             return result
         except OfficeMCPError as e:

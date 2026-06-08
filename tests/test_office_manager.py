@@ -81,6 +81,83 @@ def test_ensure_document_marks_target_active(tmp_path: Path, monkeypatch: pytest
     assert manager._active_file == doc_path
 
 
+def test_ensure_document_activates_live_document_when_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = OfficeManager()
+    doc_path = tmp_path / "sheet.xlsx"
+
+    class FakeSheet:
+        def __init__(self) -> None:
+            self.activated = False
+
+        def Activate(self) -> None:  # noqa: N802
+            self.activated = True
+
+    class FakeWindow:
+        def __init__(self) -> None:
+            self.activated = False
+
+        def Activate(self) -> None:  # noqa: N802
+            self.activated = True
+
+    class FakeWindows:
+        Count = 1
+
+        def __init__(self, window: FakeWindow) -> None:
+            self.window = window
+
+        def __call__(self, index: int) -> FakeWindow:
+            assert index == 1
+            return self.window
+
+    class FakeWorkbook:
+        def __init__(self) -> None:
+            self.activated = False
+            self.window = FakeWindow()
+            self.ActiveSheet = FakeSheet()
+            self.Windows = FakeWindows(self.window)
+
+        def Activate(self) -> None:  # noqa: N802
+            self.activated = True
+
+    fake_doc = FakeWorkbook()
+    monkeypatch.setattr(manager, "get_document", lambda file_path, require_active=False: fake_doc)
+
+    doc = manager.ensure_document(doc_path, activate=True)
+
+    assert doc is fake_doc
+    assert fake_doc.activated is True
+    assert fake_doc.window.activated is True
+    assert fake_doc.ActiveSheet.activated is True
+
+
+def test_close_document_keeps_tracking_when_close_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = OfficeManager()
+    doc_path = tmp_path / "draft.docx"
+    path_key = str(doc_path.resolve())
+
+    class FakeDoc:
+        FullName = path_key
+
+        def Save(self) -> None:  # noqa: N802
+            return None
+
+        def Close(self, SaveChanges=False) -> None:  # noqa: N802, ANN001
+            raise RuntimeError("still open")
+
+    fake_doc = FakeDoc()
+    manager._documents[path_key] = fake_doc
+    manager._doc_types[path_key] = "word"
+
+    monkeypatch.setattr(manager, "_retry_on_modal", lambda func, *args, **kwargs: func(*args))
+
+    manager.close_document(doc_path, save=True)
+
+    assert manager._documents[path_key] is fake_doc
+    assert manager._doc_types[path_key] == "word"
+
+
 def test_dispatch_app_maps_class_not_registered_to_office_not_installed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

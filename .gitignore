@@ -24,3 +24,7 @@ tests/__pycache__/
 
 test_output/
 _mergework/
+demo/
+demo_fix/
+deliverables/
+tmp/
