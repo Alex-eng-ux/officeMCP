@@ -26,12 +26,24 @@ class FakeCell:
         self.row = row
         self.col = col
         self.Shape = FakeShapeCell(text)
+        self.RowSpan = 1
+        self.ColSpan = 1
 
     def Merge(self, other: "FakeCell") -> None:  # noqa: N802
         self.table.last_merge = (self.row, self.col, other.row, other.col)
+        start_row, end_row = sorted((self.row, other.row))
+        start_col, end_col = sorted((self.col, other.col))
+        for row in range(start_row, end_row + 1):
+            for col in range(start_col, end_col + 1):
+                cell = self.table.Cell(row, col)
+                cell.RowSpan = end_row - start_row + 1
+                cell.ColSpan = end_col - start_col + 1
 
     def Split(self) -> None:  # noqa: N802
         self.table.last_split = (self.row, self.col)
+        for cell in self.table._cells.values():
+            cell.RowSpan = 1
+            cell.ColSpan = 1
 
 
 class FakeCount:
@@ -150,6 +162,32 @@ def test_ppt_split_table_cells_restores_original_texts_from_metadata() -> None:
 
     assert "split_table_cells" in result
     assert presentation.table.last_split == (1, 1)
+    assert presentation.table.Cell(1, 1).Shape.TextFrame.TextRange.Text == "A"
+    assert presentation.table.Cell(1, 2).Shape.TextFrame.TextRange.Text == "B"
+    assert presentation.table.Cell(2, 1).Shape.TextFrame.TextRange.Text == "C"
+    assert presentation.table.Cell(2, 2).Shape.TextFrame.TextRange.Text == "D"
+    assert presentation.shape.Tags("OfficeMCP.TableMerge.1.1") == ""
+
+
+def test_ppt_split_table_cells_restores_original_texts_from_non_anchor_cell() -> None:
+    presentation = FakePresentation(
+        [
+            ["A", "B"],
+            ["C", "D"],
+        ]
+    )
+    _ppt_merge_table_cells(
+        presentation,
+        {"slide_index": 1, "shape_index": 1, "start_row": 1, "start_col": 1, "end_row": 2, "end_col": 2},
+    )
+
+    result = _ppt_split_table_cells(
+        presentation,
+        {"slide_index": 1, "shape_index": 1, "row": 2, "col": 2},
+    )
+
+    assert "split_table_cells" in result
+    assert presentation.table.last_split == (2, 2)
     assert presentation.table.Cell(1, 1).Shape.TextFrame.TextRange.Text == "A"
     assert presentation.table.Cell(1, 2).Shape.TextFrame.TextRange.Text == "B"
     assert presentation.table.Cell(2, 1).Shape.TextFrame.TextRange.Text == "C"

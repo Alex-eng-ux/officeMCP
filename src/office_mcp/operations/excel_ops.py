@@ -1,4 +1,4 @@
-"""Excel COM 操作实现."""
+﻿"""Excel COM 鎿嶄綔瀹炵幇."""
 
 import logging
 from pathlib import Path
@@ -10,7 +10,7 @@ from office_mcp.core.path_guard import validate_path
 logger = logging.getLogger(__name__)
 
 
-# 操作 op 中以 _path / _file 结尾或明确为路径字段的 key 集合
+# 鎿嶄綔 op 涓互 _path / _file 缁撳熬鎴栨槑纭负璺緞瀛楁鐨?key 闆嗗悎
 _PATH_FIELDS = (
     "image_path", "source_path", "target_path", "template_path",
     "file_path", "new_path", "output_path", "output_dir", "from_file",
@@ -19,23 +19,23 @@ _PATH_FIELDS = (
 
 
 def _validate_op_paths(op: dict) -> None:
-    """校验 op dict 中所有疑似路径字段, 防止任意文件访问.
+    """鏍￠獙 op dict 涓墍鏈夌枒浼艰矾寰勫瓧娈? 闃叉浠绘剰鏂囦欢璁块棶.
 
-    对未在白名单内但形似 Windows 路径的字段, 也做警告.
+    瀵规湭鍦ㄧ櫧鍚嶅崟鍐呬絾褰技 Windows 璺緞鐨勫瓧娈? 涔熷仛璀﹀憡.
     """
     for key, value in op.items():
         if not isinstance(value, str) or not value:
             continue
-        # 已显式列入白名单: 校验
+        # 宸叉樉寮忓垪鍏ョ櫧鍚嶅崟: 鏍￠獙
         if key.lower() in _PATH_FIELDS or key.lower().endswith(("_path", "_file", "path")):
             try:
                 validate_path(value)
             except COMOperationError:
                 raise
             except Exception as e:
-                raise COMOperationError(op.get("type", "?"), f"路径校验失败 {key}={value}: {e}")
+                raise COMOperationError(op.get("type", "?"), f"璺緞鏍￠獙澶辫触 {key}={value}: {e}")
 
-# 图表类型映射
+# 鍥捐〃绫诲瀷鏄犲皠
 CHART_TYPE_MAP = {
     "column": 51,      # xlColumnClustered
     "bar": 57,         # xlBarClustered
@@ -47,39 +47,39 @@ CHART_TYPE_MAP = {
 
 
 def apply_excel_operations(workbook: Any, operations: list[dict]) -> list[dict]:
-    """对 Excel 工作簿执行批量操作.
+    """瀵?Excel 宸ヤ綔绨挎墽琛屾壒閲忔搷浣?
 
     Args:
-        workbook: Excel Workbook 对象
-        operations: 操作列表
+        workbook: Excel Workbook 瀵硅薄
+        operations: 鎿嶄綔鍒楄〃
 
     Returns:
-        每个操作的执行结果
+        姣忎釜鎿嶄綔鐨勬墽琛岀粨鏋?
     """
     results = []
     for op in operations:
         op_type = op.get("type", "")
         try:
-            # 入口处校验 op 中所有疑似路径字段
+            # 鍏ュ彛澶勬牎楠?op 涓墍鏈夌枒浼艰矾寰勫瓧娈?
             _validate_op_paths(op)
             result = _execute_excel_operation(workbook, op)
             results.append({"type": op_type, "status": "success", "result": result})
         except Exception as e:
-            logger.error(f"Excel 操作失败 [{op_type}]: {e}")
+            logger.error(f"Excel 鎿嶄綔澶辫触 [{op_type}]: {e}")
             results.append({"type": op_type, "status": "error", "message": str(e)})
     return results
 
 
 def _get_sheet(workbook: Any, sheet_name: str) -> Any:
-    """获取工作表."""
+    """鑾峰彇宸ヤ綔琛?"""
     try:
         return workbook.Worksheets(sheet_name)
     except Exception as e:
-        raise COMOperationError(f"获取工作表 '{sheet_name}'", str(e))
+        raise COMOperationError(f"鑾峰彇宸ヤ綔琛?'{sheet_name}'", str(e))
 
 
 def _col_idx_to_letters(col: int) -> str:
-    """将 1-based 列号转为字母: 1->A, 26->Z, 27->AA, 52->AZ, 53->BA, 702->ZZ, 703->AAA."""
+    """灏?1-based 鍒楀彿杞负瀛楁瘝: 1->A, 26->Z, 27->AA, 52->AZ, 53->BA, 702->ZZ, 703->AAA."""
     if col < 1:
         return ""
     result = ""
@@ -108,8 +108,18 @@ def _excel_external_range_address(range_obj: Any) -> str:
         return f"'{sheet_name}'!{range_obj.Address}"
 
 
+def _excel_find_pivot_table(sheet: Any, pivot_name: str = "") -> Any | None:
+    """Return the first matching PivotTable on a sheet."""
+    pivot_tables = sheet.PivotTables()
+    for index in range(1, pivot_tables.Count + 1):
+        candidate = pivot_tables(index)
+        if not pivot_name or candidate.Name == pivot_name:
+            return candidate
+    return None
+
+
 def _execute_excel_operation(workbook: Any, op: dict) -> Any:
-    """执行单个 Excel 操作."""
+    """鎵ц鍗曚釜 Excel 鎿嶄綔."""
     op_type = op.get("type", "")
 
     if op_type == "write_cell":
@@ -341,25 +351,27 @@ def _execute_excel_operation(workbook: Any, op: dict) -> Any:
         return _set_calculation_mode(workbook, op)
     elif op_type == "set_iterative_calc":
         return _set_iterative_calc(workbook, op)
+    elif op_type == "goal_seek":
+        return _goal_seek(workbook, op)
     else:
-        raise COMOperationError(f"未知的 Excel 操作类型: {op_type}")
+        raise COMOperationError(f"鏈煡鐨?Excel 鎿嶄綔绫诲瀷: {op_type}")
 
 
 def _check_typography(workbook: Any, op: dict) -> list[dict]:
-    """检查 Excel 工作簿排版问题.
+    """妫€鏌?Excel 宸ヤ綔绨挎帓鐗堥棶棰?
 
     Args:
-        workbook: Excel 工作簿对象
-        op: 操作配置
+        workbook: Excel 宸ヤ綔绨垮璞?
+        op: 鎿嶄綔閰嶇疆
 
     Returns:
-        问题列表，每个问题包含 type, description, location
+        闂鍒楄〃锛屾瘡涓棶棰樺寘鍚?type, description, location
     """
     issues = []
     sheet_name = op.get("sheet", None)
 
     try:
-        # 如果指定了工作表，只检查该表，否则检查所有表
+        # 濡傛灉鎸囧畾浜嗗伐浣滆〃锛屽彧妫€鏌ヨ琛紝鍚﹀垯妫€鏌ユ墍鏈夎〃
         sheets_to_check = []
         if sheet_name:
             sheets_to_check.append(_get_sheet(workbook, sheet_name))
@@ -369,37 +381,37 @@ def _check_typography(workbook: Any, op: dict) -> list[dict]:
 
         for sheet in sheets_to_check:
             sheet_name_current = sheet.Name
-            # 1. 检查单元格内容对齐
+            # 1. 妫€鏌ュ崟鍏冩牸鍐呭瀵归綈
             issues.extend(_check_cell_alignment(sheet, sheet_name_current))
 
-            # 2. 检查数字格式一致性
+            # 2. 妫€鏌ユ暟瀛楁牸寮忎竴鑷存€?
             issues.extend(_check_number_format_consistency(sheet, sheet_name_current))
 
-            # 3. 检查边框使用规范
+            # 3. 妫€鏌ヨ竟妗嗕娇鐢ㄨ鑼?
             issues.extend(_check_border_usage(sheet, sheet_name_current))
 
     except Exception as e:
-        logger.error(f"Excel 排版检查出错: {e}")
+        logger.error(f"Excel 鎺掔増妫€鏌ュ嚭閿? {e}")
         issues.append({
             "type": "error",
-            "description": f"排版检查过程中发生错误: {str(e)}",
-            "location": "整个工作簿"
+            "description": f"鎺掔増妫€鏌ヨ繃绋嬩腑鍙戠敓閿欒: {str(e)}",
+            "location": "entire_workbook",
         })
 
     return issues
 
 
 def _check_cell_alignment(sheet: Any, sheet_name: str) -> list[dict]:
-    """检查单元格内容对齐."""
+    """妫€鏌ュ崟鍏冩牸鍐呭瀵归綈."""
     issues = []
     try:
-        # 定义 Excel 对齐常量
+        # 瀹氫箟 Excel 瀵归綈甯搁噺
         xlHAlignGeneral = 1
         xlHAlignLeft = -4131
         xlHAlignCenter = -4108
         xlHAlignRight = -4152
 
-        # 获取使用范围
+        # 鑾峰彇浣跨敤鑼冨洿
         used_range = sheet.UsedRange
         if used_range is None:
             return issues
@@ -407,25 +419,25 @@ def _check_cell_alignment(sheet: Any, sheet_name: str) -> list[dict]:
         row_count = used_range.Rows.Count
         col_count = used_range.Columns.Count
 
-        # 简单检查：同一列的单元格对齐方式是否一致（针对前100行和前20列）
+        # 绠€鍗曟鏌ワ細鍚屼竴鍒楃殑鍗曞厓鏍煎榻愭柟寮忔槸鍚︿竴鑷达紙閽堝鍓?00琛屽拰鍓?0鍒楋級
         max_rows = min(row_count, 100)
         max_cols = min(col_count, 20)
 
         for col in range(1, max_cols + 1):
-            # 获取第一行的数据类型作为参考
+            # 鑾峰彇绗竴琛岀殑鏁版嵁绫诲瀷浣滀负鍙傝€?
             first_cell = sheet.Cells(1, col)
             first_value = first_cell.Value
             first_align = first_cell.HorizontalAlignment
 
-            # 如果第一行有值，检查同列其他单元格
+            # 濡傛灉绗竴琛屾湁鍊硷紝妫€鏌ュ悓鍒楀叾浠栧崟鍏冩牸
             if first_value is not None:
                 for row in range(2, max_rows + 1):
                     cell = sheet.Cells(row, col)
                     cell_value = cell.Value
 
                     if cell_value is not None:
-                        # 数字和文本通常有不同的对齐习惯
-                        # 数字通常右对齐，文本通常左对齐
+                        # 鏁板瓧鍜屾枃鏈€氬父鏈変笉鍚岀殑瀵归綈涔犳儻
+                        # 鏁板瓧閫氬父鍙冲榻愶紝鏂囨湰閫氬父宸﹀榻?
                         cell_align = cell.HorizontalAlignment
                         is_number = isinstance(cell_value, (int, float))
                         is_first_number = isinstance(first_value, (int, float))
@@ -433,22 +445,22 @@ def _check_cell_alignment(sheet: Any, sheet_name: str) -> list[dict]:
                         if is_number and cell_align not in (xlHAlignRight, xlHAlignGeneral):
                             issues.append({
                                 "type": "cell_alignment",
-                                "description": f"数字单元格建议使用右对齐，当前对齐: {cell_align}",
+                                "description": f"鏁板瓧鍗曞厓鏍煎缓璁娇鐢ㄥ彸瀵归綈锛屽綋鍓嶅榻? {cell_align}",
                                 "location": f"{sheet_name}!{_col_idx_to_letters(col)}{row}"
                             })
                         elif not is_number and cell_align == xlHAlignRight:
                             issues.append({
                                 "type": "cell_alignment",
-                                "description": f"文本单元格建议使用左对齐",
+                                "description": f"鏂囨湰鍗曞厓鏍煎缓璁娇鐢ㄥ乏瀵归綈",
                                 "location": f"{sheet_name}!{_col_idx_to_letters(col)}{row}"
                             })
     except Exception as e:
-        logger.warning(f"检查单元格对齐出错: {e}")
+        logger.warning(f"妫€鏌ュ崟鍏冩牸瀵归綈鍑洪敊: {e}")
     return issues
 
 
 def _check_number_format_consistency(sheet: Any, sheet_name: str) -> list[dict]:
-    """检查数字格式一致性."""
+    """妫€鏌ユ暟瀛楁牸寮忎竴鑷存€?"""
     issues = []
     try:
         used_range = sheet.UsedRange
@@ -462,7 +474,7 @@ def _check_number_format_consistency(sheet: Any, sheet_name: str) -> list[dict]:
         max_cols = min(col_count, 20)
 
         for col in range(1, max_cols + 1):
-            # 收集列中所有数字单元格的格式
+            # 鏀堕泦鍒椾腑鎵€鏈夋暟瀛楀崟鍏冩牸鐨勬牸寮?
             number_formats = []
             for row in range(1, max_rows + 1):
                 cell = sheet.Cells(row, col)
@@ -472,22 +484,22 @@ def _check_number_format_consistency(sheet: Any, sheet_name: str) -> list[dict]:
                     if fmt and fmt not in number_formats:
                         number_formats.append(fmt)
 
-            # 如果同列中有多种数字格式，建议统一
+            # 濡傛灉鍚屽垪涓湁澶氱鏁板瓧鏍煎紡锛屽缓璁粺涓€
             if len(number_formats) > 1:
                 issues.append({
                     "type": "number_format",
-                    "description": f"列中存在多种数字格式: {', '.join(number_formats)}",
-                    "location": f"{sheet_name}!列 {_col_idx_to_letters(col)}"
+                    "description": f"鍒椾腑瀛樺湪澶氱鏁板瓧鏍煎紡: {', '.join(number_formats)}",
+                    "location": f"{sheet_name}!鍒?{_col_idx_to_letters(col)}"
                 })
     except Exception as e:
-        logger.warning(f"检查数字格式出错: {e}")
+        logger.warning(f"妫€鏌ユ暟瀛楁牸寮忓嚭閿? {e}")
     return issues
 
 
 def _check_border_usage(sheet: Any, sheet_name: str) -> list[dict]:
-    """检查边框使用规范: 报告无边框的有内容孤立单元格.
+    """妫€鏌ヨ竟妗嗕娇鐢ㄨ鑼? 鎶ュ憡鏃犺竟妗嗙殑鏈夊唴瀹瑰绔嬪崟鍏冩牸.
 
-    注: 仅报告顶部行 (标题行) 的单元格是否缺少边框, 简单启发式.
+    娉? 浠呮姤鍛婇《閮ㄨ (鏍囬琛? 鐨勫崟鍏冩牸鏄惁缂哄皯杈规, 绠€鍗曞惎鍙戝紡.
     """
     issues: list[dict] = []
     try:
@@ -495,11 +507,11 @@ def _check_border_usage(sheet: Any, sheet_name: str) -> list[dict]:
         if used_range is None:
             return issues
 
-        # 边框 COM 常量
+        # 杈规 COM 甯搁噺
         xlEdgeTop = 8
         xlLineStyleNone = -4142
 
-        # 只检查第一行 (header 行) 是否有边框
+        # 鍙鏌ョ涓€琛?(header 琛? 鏄惁鏈夎竟妗?
         col_count = min(int(used_range.Columns.Count), 20)
         for col in range(1, col_count + 1):
             cell = sheet.Cells(1, col)
@@ -516,12 +528,12 @@ def _check_border_usage(sheet: Any, sheet_name: str) -> list[dict]:
             except Exception:
                 continue
     except Exception as e:
-        logger.warning(f"检查边框使用出错: {e}")
+        logger.warning(f"妫€鏌ヨ竟妗嗕娇鐢ㄥ嚭閿? {e}")
     return issues
 
 
 def _write_cell(workbook: Any, op: dict) -> str:
-    """写入单元格."""
+    """鍐欏叆鍗曞厓鏍?"""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A1")
     value = op.get("value", "")
@@ -530,7 +542,7 @@ def _write_cell(workbook: Any, op: dict) -> str:
 
 
 def _write_range(workbook: Any, op: dict) -> str:
-    """写入范围."""
+    """鍐欏叆鑼冨洿."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     start_cell = op.get("start_cell", "A1")
     data = op.get("data", [])
@@ -541,13 +553,13 @@ def _write_range(workbook: Any, op: dict) -> str:
     rows = len(data)
     cols = max(len(row) for row in data) if data else 0
 
-    # 计算结束单元格
+    # 璁＄畻缁撴潫鍗曞厓鏍?
     start_row = sheet.Range(start_cell).Row
     start_col = sheet.Range(start_cell).Column
     end_row = start_row + rows - 1
     end_col = start_col + cols - 1
 
-    # 将列号转为字母
+    # 灏嗗垪鍙疯浆涓哄瓧姣?
     def col_to_letter(col: int) -> str:
         result = ""
         while col > 0:
@@ -558,7 +570,7 @@ def _write_range(workbook: Any, op: dict) -> str:
     end_cell = f"{col_to_letter(end_col)}{end_row}"
     range_obj = sheet.Range(f"{start_cell}:{end_cell}")
 
-    # 填充数据，补全短行
+    # 濉厖鏁版嵁锛岃ˉ鍏ㄧ煭琛?
     filled_data = []
     for row in data:
         filled_row = list(row) + [""] * (cols - len(row))
@@ -569,18 +581,18 @@ def _write_range(workbook: Any, op: dict) -> str:
 
 
 def _read_range(workbook: Any, op: dict) -> Any:
-    """读取范围."""
+    """璇诲彇鑼冨洿."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
     values = sheet.Range(range_str).Value
 
-    # 统一为二维列表
+    # 缁熶竴涓轰簩缁村垪琛?
     if values is None:
         return []
     if not isinstance(values, tuple):
         values = ((values,),)
 
-    # 处理单行或单列的情况
+    # 澶勭悊鍗曡鎴栧崟鍒楃殑鎯呭喌
     result = []
     for row in values:
         if isinstance(row, tuple):
@@ -591,7 +603,7 @@ def _read_range(workbook: Any, op: dict) -> Any:
 
 
 def _add_formula(workbook: Any, op: dict) -> str:
-    """添加公式."""
+    """娣诲姞鍏紡."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A1")
     formula = op.get("formula", "")
@@ -600,7 +612,7 @@ def _add_formula(workbook: Any, op: dict) -> str:
 
 
 def _format_range(workbook: Any, op: dict) -> str:
-    """格式化范围."""
+    """鏍煎紡鍖栬寖鍥?"""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
     range_obj = sheet.Range(range_str)
@@ -610,12 +622,12 @@ def _format_range(workbook: Any, op: dict) -> str:
     if op.get("italic"):
         range_obj.Font.Italic = True
 
-    # 背景色 (支持 #RRGGBB)
+    # 鑳屾櫙鑹?(鏀寔 #RRGGBB)
     bg_color = op.get("background_color")
     if bg_color:
         range_obj.Interior.Color = _hex_to_rgb(bg_color)
 
-    # 字体色
+    # 瀛椾綋鑹?
     font_color = op.get("font_color")
     if font_color:
         range_obj.Font.Color = _hex_to_rgb(font_color)
@@ -624,7 +636,7 @@ def _format_range(workbook: Any, op: dict) -> str:
 
 
 def _set_number_format(workbook: Any, op: dict) -> str:
-    """设置数字格式."""
+    """璁剧疆鏁板瓧鏍煎紡."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
     fmt = op.get("format", "General")
@@ -633,7 +645,7 @@ def _set_number_format(workbook: Any, op: dict) -> str:
 
 
 def _create_chart(workbook: Any, op: dict) -> str:
-    """创建图表."""
+    """鍒涘缓鍥捐〃."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_type = op.get("chart_type", "column")
     data_range = op.get("data_range", "A1:B5")
@@ -657,7 +669,7 @@ def _create_chart(workbook: Any, op: dict) -> str:
 
 
 def _add_worksheet(workbook: Any, op: dict) -> str:
-    """添加工作表."""
+    """娣诲姞宸ヤ綔琛?"""
     name = op.get("name", "Sheet")
     sheet = workbook.Worksheets.Add()
     sheet.Name = name
@@ -665,7 +677,7 @@ def _add_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _rename_worksheet(workbook: Any, op: dict) -> str:
-    """重命名工作表."""
+    """閲嶅懡鍚嶅伐浣滆〃."""
     old_name = op.get("old_name", "")
     new_name = op.get("new_name", "")
     workbook.Worksheets(old_name).Name = new_name
@@ -673,7 +685,7 @@ def _rename_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _auto_fit_columns(workbook: Any, op: dict) -> str:
-    """自动调整列宽."""
+    """鑷姩璋冩暣鍒楀."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     columns = op.get("columns", [])
     if isinstance(columns, str):
@@ -685,7 +697,7 @@ def _auto_fit_columns(workbook: Any, op: dict) -> str:
 
 
 def _freeze_panes(workbook: Any, op: dict) -> str:
-    """冻结窗格."""
+    """鍐荤粨绐楁牸."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A2")
     sheet.Range(cell).Select()
@@ -694,7 +706,7 @@ def _freeze_panes(workbook: Any, op: dict) -> str:
 
 
 def _hex_to_rgb(hex_color: str) -> int:
-    """将 #RRGGBB 转为 Office RGB 整数."""
+    """灏?#RRGGBB 杞负 Office RGB 鏁存暟."""
     hex_color = hex_color.lstrip("#")
     if len(hex_color) != 6:
         return 0
@@ -704,16 +716,16 @@ def _hex_to_rgb(hex_color: str) -> int:
     return r + (g << 8) + (b << 16)
 
 
-# ============ Excel 高级功能 ============
+# ============ Excel 楂樼骇鍔熻兘 ============
 
 def _add_data_validation(workbook: Any, op: dict) -> str:
-    """添加数据验证.
+    """娣诲姞鏁版嵁楠岃瘉.
 
     Args:
-        sheet: 工作表名称
-        range: 验证范围 (如 "A1:A10")
-        type: 验证类型 (list/whole/decimal/date/time/textLength/custom)
-        formula1: 验证公式或列表值 (逗号分隔)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 楠岃瘉鑼冨洿 (濡?"A1:A10")
+        type: 楠岃瘉绫诲瀷 (list/whole/decimal/date/time/textLength/custom)
+        formula1: 楠岃瘉鍏紡鎴栧垪琛ㄥ€?(閫楀彿鍒嗛殧)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1:A10")
@@ -721,8 +733,17 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
     formula1 = op.get("formula1", "")
     formula2 = op.get("formula2", "")
     operator_name = op.get("operator", "")
+    ignore_blank = op.get("ignore_blank", True)
+    in_cell_dropdown = op.get("in_cell_dropdown", True)
+    show_input = op.get("show_input", True)
+    input_title = op.get("input_title", "")
+    input_message = op.get("input_message", "")
+    show_error = op.get("show_error", True)
+    error_title = op.get("error_title", "")
+    error_message = op.get("error_message", "")
+    error_style_name = op.get("error_style", "stop")
 
-    # 验证类型映射
+    # 楠岃瘉绫诲瀷鏄犲皠
     type_map = {
         "list": 3,          # xlValidateList
         "whole": 1,         # xlValidateWholeNumber
@@ -737,19 +758,21 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
     range_obj = sheet.Range(range_str)
     if not formula1:
         raise COMOperationError("add_data_validation", "formula1 is required")
+    if operator_name in {"between", "not_between"} and not formula2:
+        raise COMOperationError("add_data_validation", "formula2 is required for between/not_between validations")
 
-    # 先删除已有验证，避免冲突
+    # 鍏堝垹闄ゅ凡鏈夐獙璇侊紝閬垮厤鍐茬獊
     try:
         range_obj.Validation.Delete()
     except Exception:
         pass
 
     try:
-        # list 类型 (Type=3) 不需要 Operator 参数，Formula1 不能为空
+        # list 绫诲瀷 (Type=3) 涓嶉渶瑕?Operator 鍙傛暟锛孎ormula1 涓嶈兘涓虹┖
         if validation_type_val == 3:  # xlValidateList
             range_obj.Validation.Add(
                 Type=validation_type_val,
-                AlertStyle=1,  # xlValidAlertStop
+                AlertStyle={"stop": 1, "warning": 2, "information": 3}.get(error_style_name, 1),
                 Formula1=formula1,
             )
         else:
@@ -765,7 +788,7 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
             }
             validation_kwargs = {
                 "Type": validation_type_val,
-                "AlertStyle": 1,
+                "AlertStyle": {"stop": 1, "warning": 2, "information": 3}.get(error_style_name, 1),
                 "Formula1": formula1,
             }
             if operator_name in operator_map:
@@ -773,24 +796,36 @@ def _add_data_validation(workbook: Any, op: dict) -> str:
             if formula2:
                 validation_kwargs["Formula2"] = formula2
             range_obj.Validation.Add(**validation_kwargs)
+        validation = range_obj.Validation
+        validation.IgnoreBlank = bool(ignore_blank)
+        try:
+            validation.InCellDropdown = bool(in_cell_dropdown)
+        except Exception:
+            logger.debug("Validation dropdown flag unsupported for this validation type")
+        validation.ShowInput = bool(show_input)
+        validation.InputTitle = input_title
+        validation.InputMessage = input_message
+        validation.ShowError = bool(show_error)
+        validation.ErrorTitle = error_title
+        validation.ErrorMessage = error_message
     except Exception as e:
         raise COMOperationError("add_data_validation", str(e))
     return f"added_data_validation: {range_str} ({validation_type})"
 
 
 def _add_conditional_format(workbook: Any, op: dict) -> str:
-    """添加条件格式.
+    """娣诲姞鏉′欢鏍煎紡.
 
     Args:
-        sheet: 工作表名称
-        range: 范围 (如 "A1:A10")
-        type: 条件类型 (cell_value/formula/color_scale/data_bar/icon_set)
-        operator: 操作符 (greater/less/equal/between)
-        formula1: 条件值1
-        formula2: 条件值2
-        format_type: 格式类型 (color_scale/data_bar/icon_set)
-        font_color: 字体颜色 (#RRGGBB)
-        bg_color: 背景颜色 (#RRGGBB)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿 (濡?"A1:A10")
+        type: 鏉′欢绫诲瀷 (cell_value/formula/color_scale/data_bar/icon_set)
+        operator: 鎿嶄綔绗?(greater/less/equal/between)
+        formula1: 鏉′欢鍊?
+        formula2: 鏉′欢鍊?
+        format_type: 鏍煎紡绫诲瀷 (color_scale/data_bar/icon_set)
+        font_color: 瀛椾綋棰滆壊 (#RRGGBB)
+        bg_color: 鑳屾櫙棰滆壊 (#RRGGBB)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1:A10")
@@ -804,17 +839,17 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
 
     range_obj = sheet.Range(range_str)
 
-    # 先删除已有条件格式，避免冲突
+    # 鍏堝垹闄ゅ凡鏈夋潯浠舵牸寮忥紝閬垮厤鍐茬獊
     try:
         range_obj.FormatConditions.Delete()
     except Exception:
         pass
 
-    # 高级格式类型
+    # 楂樼骇鏍煎紡绫诲瀷
     if format_type == "color_scale":
-        # 色阶
+        # 鑹查樁
         color_scale = range_obj.FormatConditions.AddColorScale(ColorScaleType=3)
-        # 设置默认颜色: 红-黄-绿
+        # 璁剧疆榛樿棰滆壊: 绾?榛?缁?
         color_scale.ColorScaleCriteria(1).Type = 1  # xlLowestValue
         color_scale.ColorScaleCriteria(1).FormatColor.Color = _hex_to_rgb("#FF0000")
         color_scale.ColorScaleCriteria(2).Type = 5  # xlPercentile
@@ -825,25 +860,25 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
         return f"added_conditional_format: {range_str} (color_scale)"
 
     elif format_type == "data_bar":
-        # 数据条
+        # 鏁版嵁鏉?
         data_bar = range_obj.FormatConditions.AddDatabar()
         data_bar.BarColor.Color = _hex_to_rgb("#638EC6")
         data_bar.BarFillType = 0  # xlDataBarFillSolid
         return f"added_conditional_format: {range_str} (data_bar)"
 
     elif format_type == "icon_set":
-        # 图标集
+        # 鍥炬爣闆?
         icon_set = range_obj.FormatConditions.AddIconSetCondition()
         icon_set.IconSet = workbook.Application.IconSets(3)  # xl3Arrows
         return f"added_conditional_format: {range_str} (icon_set)"
 
-    # 常规条件格式
+    # 甯歌鏉′欢鏍煎紡
     else:
         if condition_type == "cell_value":
-            # xlCellValue 类型 Formula1 不能为空
+            # xlCellValue 绫诲瀷 Formula1 涓嶈兘涓虹┖
             if not formula1:
                 formula1 = "0"
-            # 操作符映射
+            # 鎿嶄綔绗︽槧灏?
             op_map = {
                 "between": 1,        # xlBetween
                 "not_between": 2,    # xlNotBetween
@@ -867,7 +902,7 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
             try:
                 format_condition = range_obj.FormatConditions.Add(**params)
             except Exception as e:
-                raise COMOperationError("add_conditional_format", f"FormatConditions.Add 失败: {e}")
+                raise COMOperationError("add_conditional_format", f"FormatConditions.Add 澶辫触: {e}")
         else:  # formula
             if not formula1:
                 formula1 = "=TRUE"
@@ -877,9 +912,9 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
                     Formula1=formula1,
                 )
             except Exception as e:
-                raise COMOperationError("add_conditional_format", f"FormatConditions.Add 失败: {e}")
+                raise COMOperationError("add_conditional_format", f"FormatConditions.Add 澶辫触: {e}")
 
-        # 应用格式
+        # 搴旂敤鏍煎紡
         if font_color:
             format_condition.Font.Color = _hex_to_rgb(font_color)
         if bg_color:
@@ -889,11 +924,11 @@ def _add_conditional_format(workbook: Any, op: dict) -> str:
 
 
 def _merge_cells(workbook: Any, op: dict) -> str:
-    """合并单元格.
+    """鍚堝苟鍗曞厓鏍?
 
     Args:
-        sheet: 工作表名称
-        range: 范围 (如 "A1:C3")
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿 (濡?"A1:C3")
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1:C3")
@@ -902,14 +937,14 @@ def _merge_cells(workbook: Any, op: dict) -> str:
 
 
 def _set_borders(workbook: Any, op: dict) -> str:
-    """设置边框.
+    """璁剧疆杈规.
 
     Args:
-        sheet: 工作表名称
-        range: 范围 (如 "A1:C3")
-        border_type: 边框类型 (all/outside/inside)
-        style: 线型 (thin/medium/thick/dashed/dotted)
-        color: 颜色 (#RRGGBB)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿 (濡?"A1:C3")
+        border_type: 杈规绫诲瀷 (all/outside/inside)
+        style: 绾垮瀷 (thin/medium/thick/dashed/dotted)
+        color: 棰滆壊 (#RRGGBB)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1:C3")
@@ -917,7 +952,7 @@ def _set_borders(workbook: Any, op: dict) -> str:
     style = op.get("style", "thin")
     color = op.get("color", "#000000")
 
-    # 线型映射
+    # 绾垮瀷鏄犲皠
     style_map = {
         "thin": 1,          # xlThin
         "medium": -4118,    # xlMedium
@@ -948,20 +983,20 @@ def _set_borders(workbook: Any, op: dict) -> str:
 
 
 def _add_named_range(workbook: Any, op: dict) -> str:
-    """添加命名范围.
+    """娣诲姞鍛藉悕鑼冨洿.
 
     Args:
-        name: 名称
-        refers_to: 引用公式 (如 "=Sheet1!$A$1:$A$10")
+        name: 鍚嶇О
+        refers_to: 寮曠敤鍏紡 (濡?"=Sheet1!$A$1:$A$10")
     """
     name = op.get("name", "")
     refers_to = op.get("refers_to", "=Sheet1!$A$1:$A$10")
 
     if not name:
-        raise COMOperationError("add_named_range", "name 不能为空")
+        raise COMOperationError("add_named_range", "name 涓嶈兘涓虹┖")
 
     try:
-        # 删除已存在的同名范围
+        # 鍒犻櫎宸插瓨鍦ㄧ殑鍚屽悕鑼冨洿
         try:
             for i in range(1, workbook.Names.Count + 1):
                 try:
@@ -976,11 +1011,11 @@ def _add_named_range(workbook: Any, op: dict) -> str:
         try:
             workbook.Names.Add(Name=name, RefersTo=refers_to)
         except Exception:
-            # RefersTo 失败时尝试 RefersToR1C1 作为回退
+            # RefersTo 澶辫触鏃跺皾璇?RefersToR1C1 浣滀负鍥為€€
             try:
                 workbook.Names.Add(Name=name, RefersToR1C1=refers_to)
             except Exception as e2:
-                raise COMOperationError("add_named_range", f"RefersTo 和 RefersToR1C1 均失败: {e2}")
+                raise COMOperationError("add_named_range", f"RefersTo 鍜?RefersToR1C1 鍧囧け璐? {e2}")
         return f"added_named_range: {name}"
     except COMOperationError:
         raise
@@ -989,27 +1024,30 @@ def _add_named_range(workbook: Any, op: dict) -> str:
 
 
 def _create_pivot_table(workbook: Any, op: dict) -> str:
-    """创建数据透视表.
+    """鍒涘缓鏁版嵁閫忚琛?
 
     Args:
-        source_sheet: 数据源工作表名称
-        source_range: 数据源范围 (如 "A1:D100", 留空则自动使用 UsedRange)
-        target_sheet: 目标工作表名称 (自动创建或指定)
-        target_cell: 目标单元格 (如 "A3")
-        row_fields: 行字段列表 (如 ["部门", "月份"])
-        column_fields: 列字段列表 (如 ["地区"])
-        data_fields: 数据字段字典 (如 {"销售额": "sum", "数量": "average"})
+        source_sheet: 鏁版嵁婧愬伐浣滆〃鍚嶇О
+        source_range: 鏁版嵁婧愯寖鍥?(濡?"A1:D100", 鐣欑┖鍒欒嚜鍔ㄤ娇鐢?UsedRange)
+        target_sheet: 鐩爣宸ヤ綔琛ㄥ悕绉?(鑷姩鍒涘缓鎴栨寚瀹?
+        target_cell: 鐩爣鍗曞厓鏍?(濡?"A3")
+        row_fields: 琛屽瓧娈靛垪琛?(濡?["閮ㄩ棬", "鏈堜唤"])
+        column_fields: 鍒楀瓧娈靛垪琛?(濡?["鍦板尯"])
+        data_fields: 鏁版嵁瀛楁瀛楀吀 (濡?{"閿€鍞": "sum", "鏁伴噺": "average"})
     """
     source_sheet = _get_sheet(workbook, op.get("source_sheet", "Sheet1"))
     source_range = op.get("source_range", "")
     target_sheet_name = op.get("target_sheet", "数据透视表")
     target_cell = op.get("target_cell", "A3")
+    pivot_name = op.get("pivot_name", "").strip()
 
     row_fields = op.get("row_fields", [])
     column_fields = op.get("column_fields", [])
+    filter_fields = op.get("filter_fields", [])
     data_fields = op.get("data_fields", {})
+    style_name = op.get("style_name", "").strip()
 
-    # 如果未指定 source_range，则使用 UsedRange 避免引用超出实际数据范围
+    # 濡傛灉鏈寚瀹?source_range锛屽垯浣跨敤 UsedRange 閬垮厤寮曠敤瓒呭嚭瀹為檯鏁版嵁鑼冨洿
     if not source_range:
         used = source_sheet.UsedRange
         if used is not None:
@@ -1017,14 +1055,14 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
         else:
             source_range = "A1"
 
-    # 创建或获取目标工作表
+    # 鍒涘缓鎴栬幏鍙栫洰鏍囧伐浣滆〃
     try:
         target_sheet = workbook.Worksheets(target_sheet_name)
     except Exception:
         target_sheet = workbook.Worksheets.Add()
         target_sheet.Name = target_sheet_name
 
-    # 创建数据透视表缓存 (使用地址字符串更可靠)
+    # 鍒涘缓鏁版嵁閫忚琛ㄧ紦瀛?(浣跨敤鍦板潃瀛楃涓叉洿鍙潬)
     source_data_addr = source_sheet.Range(source_range)
     source_data_ref = _excel_external_range_address(source_data_addr)
     try:
@@ -1033,40 +1071,48 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
             SourceData=source_data_ref,
         )
     except Exception as e:
-        raise COMOperationError("create_pivot_table", f"PivotCaches.Create 失败: {e}")
+        raise COMOperationError("create_pivot_table", f"PivotCaches.Create 澶辫触: {e}")
 
-    # 生成不重复的表名
+    # 鐢熸垚涓嶉噸澶嶇殑琛ㄥ悕
     import time
-    table_name = f"PivotTable_{int(time.time())}"
+    table_name = pivot_name or f"PivotTable_{int(time.time())}"
 
-    # 创建数据透视表
+    # 鍒涘缓鏁版嵁閫忚琛?
     try:
         pivot_table = pivot_cache.CreatePivotTable(
             TableDestination=target_sheet.Range(target_cell),
             TableName=table_name,
         )
     except Exception as e:
-        raise COMOperationError("create_pivot_table", f"CreatePivotTable 失败: {e}")
+        raise COMOperationError("create_pivot_table", f"CreatePivotTable 澶辫触: {e}")
 
-    # 配置行字段
+    # 閰嶇疆琛屽瓧娈?
     for i, field in enumerate(row_fields):
         try:
             pf = pivot_table.PivotFields(field)
             pf.Orientation = 1  # xlRowField
             pf.Position = i + 1
         except Exception as e:
-            raise COMOperationError("create_pivot_table", f"行字段 '{field}' 不存在: {e}")
+            raise COMOperationError("create_pivot_table", f"琛屽瓧娈?'{field}' 涓嶅瓨鍦? {e}")
 
-    # 配置列字段
+    # 閰嶇疆鍒楀瓧娈?
     for i, field in enumerate(column_fields):
         try:
             pf = pivot_table.PivotFields(field)
             pf.Orientation = 2  # xlColumnField
             pf.Position = i + 1
         except Exception as e:
-            raise COMOperationError("create_pivot_table", f"列字段 '{field}' 不存在: {e}")
+            raise COMOperationError("create_pivot_table", f"鍒楀瓧娈?'{field}' 涓嶅瓨鍦? {e}")
 
-    # 配置数据字段
+    for i, field in enumerate(filter_fields):
+        try:
+            pf = pivot_table.PivotFields(field)
+            pf.Orientation = 3  # xlPageField
+            pf.Position = i + 1
+        except Exception as e:
+            raise COMOperationError("create_pivot_table", f"筛选字段 '{field}' 不存在: {e}")
+
+    # 閰嶇疆鏁版嵁瀛楁
     aggregation_map = {
         "sum": -4157,      # xlSum
         "average": -4106,  # xlAverage
@@ -1082,27 +1128,33 @@ def _create_pivot_table(workbook: Any, op: dict) -> str:
                 aggregation_map.get(func, -4157),
             )
         except Exception as e:
-            raise COMOperationError("create_pivot_table", f"数据字段 '{field}' 不存在: {e}")
+            raise COMOperationError("create_pivot_table", f"鏁版嵁瀛楁 '{field}' 涓嶅瓨鍦? {e}")
 
-    return f"created_pivot_table: {target_sheet_name}"
+    if style_name:
+        try:
+            pivot_table.TableStyle2 = style_name
+        except Exception as e:
+            raise COMOperationError("create_pivot_table", f"无法应用透视表样式 '{style_name}': {e}")
+
+    return f"created_pivot_table: {target_sheet_name}!{target_cell} ({table_name})"
 
 
 def _import_data(workbook: Any, op: dict) -> str:
-    """导入外部数据文件 (CSV/TXT) 到工作表."""
+    """瀵煎叆澶栭儴鏁版嵁鏂囦欢 (CSV/TXT) 鍒板伐浣滆〃."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     file_path = op.get("file_path", "")
     start_cell = op.get("start_cell", "A1")
-    delimiter = op.get("delimiter", ",")  # CSV 分隔符
+    delimiter = op.get("delimiter", ",")  # CSV 鍒嗛殧绗?
     has_header = op.get("has_header", True)
 
     if not file_path:
-        raise COMOperationError("import_data", "file_path 不能为空")
+        raise COMOperationError("import_data", "file_path 涓嶈兘涓虹┖")
 
-    # 路径校验
+    # 璺緞鏍￠獙
     if not Path(file_path).exists():
-        raise COMOperationError("import_data", f"文件不存在: {file_path}")
+        raise COMOperationError("import_data", f"鏂囦欢涓嶅瓨鍦? {file_path}")
 
-    # 使用 QueryTables 导入
+    # 浣跨敤 QueryTables 瀵煎叆
     query = None
     try:
         query = sheet.QueryTables.Add(
@@ -1116,23 +1168,23 @@ def _import_data(workbook: Any, op: dict) -> str:
         raise COMOperationError("import_data", str(e))
     finally:
         if query:
-            query.Delete()  # 导入完成后删除查询对象
+            query.Delete()  # 瀵煎叆瀹屾垚鍚庡垹闄ゆ煡璇㈠璞?
 
     return f"imported_data: {file_path} -> {sheet.Name}"
 
 
 def _export_data(workbook: Any, op: dict) -> str:
-    """导出工作表为 CSV 文件."""
+    """瀵煎嚭宸ヤ綔琛ㄤ负 CSV 鏂囦欢."""
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     export_path = op.get("export_path", "")
 
     if not export_path:
-        raise COMOperationError("export_data", "export_path 不能为空")
+        raise COMOperationError("export_data", "export_path 涓嶈兘涓虹┖")
 
-    # 复制到新工作簿再保存为 CSV
+    # 澶嶅埗鍒版柊宸ヤ綔绨垮啀淇濆瓨涓?CSV
     new_wb = workbook.Application.Workbooks.Add()
     sheet.Copy(Before=new_wb.Worksheets(1))
-    # 删除自动生成的多余工作表
+    # 鍒犻櫎鑷姩鐢熸垚鐨勫浣欏伐浣滆〃
     for ws in list(new_wb.Worksheets):
         if ws.Name != sheet.Name:
             try:
@@ -1146,17 +1198,17 @@ def _export_data(workbook: Any, op: dict) -> str:
 
 
 def _add_slicer(workbook: Any, op: dict) -> str:
-    """添加切片器.
+    """娣诲姞鍒囩墖鍣?
 
     Args:
-        target_sheet: 切片器所在工作表名称
-        pivot_sheet: 数据透视表所在工作表名称
-        pivot_name: 数据透视表名称
-        field_name: 要筛选的字段名称
-        left: 切片器左侧位置 (像素)
-        top: 切片器顶部位置 (像素)
-        width: 切片器宽度 (像素)
-        height: 切片器高度 (像素)
+        target_sheet: 鍒囩墖鍣ㄦ墍鍦ㄥ伐浣滆〃鍚嶇О
+        pivot_sheet: 鏁版嵁閫忚琛ㄦ墍鍦ㄥ伐浣滆〃鍚嶇О
+        pivot_name: 鏁版嵁閫忚琛ㄥ悕绉?
+        field_name: 瑕佺瓫閫夌殑瀛楁鍚嶇О
+        left: 鍒囩墖鍣ㄥ乏渚т綅缃?(鍍忕礌)
+        top: 鍒囩墖鍣ㄩ《閮ㄤ綅缃?(鍍忕礌)
+        width: 鍒囩墖鍣ㄥ搴?(鍍忕礌)
+        height: 鍒囩墖鍣ㄩ珮搴?(鍍忕礌)
     """
     target_sheet_name = op.get("target_sheet", "Sheet1")
     pivot_sheet_name = op.get("pivot_sheet", "数据透视表")
@@ -1167,33 +1219,44 @@ def _add_slicer(workbook: Any, op: dict) -> str:
     width = op.get("width", 200)
     height = op.get("height", 200)
 
+    if not field_name:
+        raise COMOperationError("add_slicer", "field_name is required")
+
     try:
         target_sheet = _get_sheet(workbook, target_sheet_name)
         pivot_sheet = _get_sheet(workbook, pivot_sheet_name)
 
-        # 查找数据透视表
-        pivot_table = None
-        pivot_tables = pivot_sheet.PivotTables()
-        for index in range(1, pivot_tables.Count + 1):
-            pt = pivot_tables(index)
-            if not pivot_name or pt.Name == pivot_name:
-                pivot_table = pt
-                break
+        # 鏌ユ壘鏁版嵁閫忚琛?
+        pivot_table = _excel_find_pivot_table(pivot_sheet, pivot_name)
 
         if not pivot_table:
-            raise COMOperationError("add_slicer", f"未找到数据透视表: {pivot_name}")
+            raise COMOperationError("add_slicer", f"鏈壘鍒版暟鎹€忚琛? {pivot_name}")
 
-        # 添加切片器缓存
+        # 娣诲姞鍒囩墖鍣ㄧ紦瀛?
         slicer_caches = workbook.SlicerCaches
+        slicer_cache = None
         try:
-            slicer_cache = slicer_caches.Add2(pivot_table, field_name)
+            for index in range(1, slicer_caches.Count + 1):
+                candidate = slicer_caches(index)
+                candidate_name = str(getattr(candidate, "Name", "") or "")
+                source_name = str(getattr(candidate, "SourceName", "") or "")
+                if field_name in {candidate_name, source_name}:
+                    slicer_cache = candidate
+                    break
+        except Exception:
+            logger.debug("Could not enumerate existing slicer caches", exc_info=True)
+
+        try:
+            if slicer_cache is None:
+                slicer_cache = slicer_caches.Add2(pivot_table, field_name)
         except Exception:
             try:
-                slicer_cache = slicer_caches.Add(pivot_table, field_name)
+                if slicer_cache is None:
+                    slicer_cache = slicer_caches.Add(pivot_table, field_name)
             except Exception as e:
                 raise COMOperationError("add_slicer", f"Slicer API unavailable for field '{field_name}': {e}")
 
-        # 添加切片器
+        # 娣诲姞鍒囩墖鍣?
         slicer = slicer_cache.Slicers.Add(
             SlicerDestination=target_sheet,
             Name=f"Slicer_{field_name}",
@@ -1209,31 +1272,31 @@ def _add_slicer(workbook: Any, op: dict) -> str:
 
 
 def _add_subtotal(workbook: Any, op: dict) -> str:
-    """添加分类汇总.
+    """娣诲姞鍒嗙被姹囨€?
 
     Args:
-        sheet: 工作表名称
-        range: 数据范围 (如 "A1:D100")
-        group_by: 分组字段列号 (如 1 表示第 1 列)
-        summary_function: 汇总函数 (sum/count/average/max/min)
-        summary_fields: 要汇总的列号列表 (如 [3, 4])
-        replace: 是否替换现有分类汇总
-        page_breaks: 是否在每组后分页
-        summary_below: 汇总结果是否在数据下方
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鏁版嵁鑼冨洿 (濡?"A1:D100")
+        group_by: 鍒嗙粍瀛楁鍒楀彿 (濡?1 琛ㄧず绗?1 鍒?
+        summary_function: 姹囨€诲嚱鏁?(sum/count/average/max/min)
+        summary_fields: 瑕佹眹鎬荤殑鍒楀彿鍒楄〃 (濡?[3, 4])
+        replace: 鏄惁鏇挎崲鐜版湁鍒嗙被姹囨€?
+        page_breaks: 鏄惁鍦ㄦ瘡缁勫悗鍒嗛〉
+        summary_below: 姹囨€荤粨鏋滄槸鍚﹀湪鏁版嵁涓嬫柟
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1:D100")
     group_by = op.get("group_by", 1)
     summary_function = op.get("summary_function", "sum")
     summary_fields = op.get("summary_fields", [])
-    # summary_fields 为空时使用默认值，TotalList 必须为非空元组
+    # summary_fields 涓虹┖鏃朵娇鐢ㄩ粯璁ゅ€硷紝TotalList 蹇呴』涓洪潪绌哄厓缁?
     if not summary_fields:
         summary_fields = [2]
     replace = op.get("replace", True)
     page_breaks = op.get("page_breaks", False)
     summary_below = op.get("summary_below", True)
 
-    # 汇总函数映射
+    # 姹囨€诲嚱鏁版槧灏?
     func_map = {
         "sum": -4157,      # xlSum
         "count": -4112,    # xlCount
@@ -1259,16 +1322,16 @@ def _add_subtotal(workbook: Any, op: dict) -> str:
         raise COMOperationError("add_subtotal", str(e))
 
 
-# ============ Worksheet 工作表操作 (10 个) ============
+# ============ Worksheet 宸ヤ綔琛ㄦ搷浣?(10 涓? ============
 
 def _list_worksheets(workbook: Any, op: dict) -> list[dict]:
-    """列出所有工作表.
+    """鍒楀嚭鎵€鏈夊伐浣滆〃.
 
     Args:
-        workbook: Excel 工作簿对象
+        workbook: Excel 宸ヤ綔绨垮璞?
 
     Returns:
-        工作表信息列表
+        宸ヤ綔琛ㄤ俊鎭垪琛?
     """
     result = []
     for sheet in workbook.Worksheets:
@@ -1281,10 +1344,10 @@ def _list_worksheets(workbook: Any, op: dict) -> list[dict]:
 
 
 def _get_worksheet_info(workbook: Any, op: dict) -> dict:
-    """获取工作表信息.
+    """鑾峰彇宸ヤ綔琛ㄤ俊鎭?
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     return {
@@ -1296,17 +1359,20 @@ def _get_worksheet_info(workbook: Any, op: dict) -> dict:
         "used_rows": sheet.UsedRange.Rows.Count if sheet.UsedRange else 0,
         "used_columns": sheet.UsedRange.Columns.Count if sheet.UsedRange else 0,
         "protected": sheet.ProtectContents,
+        "protect_drawing_objects": getattr(sheet, "ProtectDrawingObjects", False),
+        "protect_scenarios": getattr(sheet, "ProtectScenarios", False),
+        "protection_mode": getattr(sheet, "ProtectionMode", False),
     }
 
 
 def _copy_worksheet(workbook: Any, op: dict) -> str:
-    """复制工作表.
+    """澶嶅埗宸ヤ綔琛?
 
     Args:
-        sheet: 源工作表名称
-        new_name: 新工作表名称 (可选)
-        position: 位置 (before/after, 可选)
-        target_sheet: 目标位置参考工作表 (可选)
+        sheet: 婧愬伐浣滆〃鍚嶇О
+        new_name: 鏂板伐浣滆〃鍚嶇О (鍙€?
+        position: 浣嶇疆 (before/after, 鍙€?
+        target_sheet: 鐩爣浣嶇疆鍙傝€冨伐浣滆〃 (鍙€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     new_name = op.get("new_name", "")
@@ -1322,7 +1388,7 @@ def _copy_worksheet(workbook: Any, op: dict) -> str:
     else:
         sheet.Copy(After=sheet)
 
-    # 获取复制后的工作表
+    # 鑾峰彇澶嶅埗鍚庣殑宸ヤ綔琛?
     new_sheet = sheet.Next
     if new_sheet and new_sheet.Name == sheet.Name:
         new_sheet = new_sheet.Next
@@ -1334,29 +1400,29 @@ def _copy_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _delete_worksheet(workbook: Any, op: dict) -> str:
-    """删除工作表.
+    """鍒犻櫎宸ヤ綔琛?
 
     Args:
-        sheet: 要删除的工作表名称
+        sheet: 瑕佸垹闄ょ殑宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     sheet_name = sheet.Name
 
-    # 检查是否唯一工作表
+    # 妫€鏌ユ槸鍚﹀敮涓€宸ヤ綔琛?
     if workbook.Worksheets.Count == 1:
-        raise COMOperationError("delete_worksheet", "不能删除唯一的工作表")
+        raise COMOperationError("delete_worksheet", "涓嶈兘鍒犻櫎鍞竴鐨勫伐浣滆〃")
 
     sheet.Delete()
     return f"deleted_worksheet: {sheet_name}"
 
 
 def _move_worksheet(workbook: Any, op: dict) -> str:
-    """移动工作表.
+    """绉诲姩宸ヤ綔琛?
 
     Args:
-        sheet: 要移动的工作表名称
-        position: 位置 (before/after/first/last)
-        target_sheet: 目标位置参考工作表 (position=before/after 时必填)
+        sheet: 瑕佺Щ鍔ㄧ殑宸ヤ綔琛ㄥ悕绉?
+        position: 浣嶇疆 (before/after/first/last)
+        target_sheet: 鐩爣浣嶇疆鍙傝€冨伐浣滆〃 (position=before/after 鏃跺繀濉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     position = op.get("position", "first")
@@ -1394,13 +1460,13 @@ def _move_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _hide_worksheet(workbook: Any, op: dict) -> str:
-    """隐藏工作表.
+    """闅愯棌宸ヤ綔琛?
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
-    # Excel 不允许隐藏工作簿中唯一可见的工作表
+    # Excel 涓嶅厑璁搁殣钘忓伐浣滅翱涓敮涓€鍙鐨勫伐浣滆〃
     visible_count = sum(1 for i in range(1, workbook.Worksheets.Count + 1) if workbook.Worksheets(i).Visible == -1)
     if visible_count <= 1:
         return f"hidden_worksheet: skipped (only {visible_count} visible sheet(s), Excel requires at least 1)"
@@ -1409,10 +1475,10 @@ def _hide_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _show_worksheet(workbook: Any, op: dict) -> str:
-    """显示工作表.
+    """鏄剧ず宸ヤ綔琛?
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     sheet.Visible = -1  # xlSheetVisible
@@ -1420,27 +1486,44 @@ def _show_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _protect_worksheet(workbook: Any, op: dict) -> str:
-    """保护工作表.
+    """淇濇姢宸ヤ綔琛?
 
     Args:
-        sheet: 工作表名称
-        password: 密码 (可选)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        password: 瀵嗙爜 (鍙€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     password = op.get("password", "")
+    protect_kwargs = {
+        "DrawingObjects": op.get("drawing_objects", True),
+        "Contents": op.get("contents", True),
+        "Scenarios": op.get("scenarios", True),
+        "UserInterfaceOnly": op.get("user_interface_only", False),
+        "AllowFormattingCells": op.get("allow_formatting_cells", False),
+        "AllowFormattingColumns": op.get("allow_formatting_columns", False),
+        "AllowFormattingRows": op.get("allow_formatting_rows", False),
+        "AllowInsertingColumns": op.get("allow_inserting_columns", False),
+        "AllowInsertingRows": op.get("allow_inserting_rows", False),
+        "AllowInsertingHyperlinks": op.get("allow_inserting_hyperlinks", False),
+        "AllowDeletingColumns": op.get("allow_deleting_columns", False),
+        "AllowDeletingRows": op.get("allow_deleting_rows", False),
+        "AllowSorting": op.get("allow_sorting", False),
+        "AllowFiltering": op.get("allow_filtering", False),
+        "AllowUsingPivotTables": op.get("allow_using_pivot_tables", False),
+    }
     if password:
-        sheet.Protect(Password=password)
+        sheet.Protect(Password=password, **protect_kwargs)
     else:
-        sheet.Protect()
+        sheet.Protect(**protect_kwargs)
     return f"protected_worksheet: {sheet.Name}"
 
 
 def _unprotect_worksheet(workbook: Any, op: dict) -> str:
-    """取消工作表保护.
+    """鍙栨秷宸ヤ綔琛ㄤ繚鎶?
 
     Args:
-        sheet: 工作表名称
-        password: 密码 (可选)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        password: 瀵嗙爜 (鍙€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     password = op.get("password", "")
@@ -1452,11 +1535,11 @@ def _unprotect_worksheet(workbook: Any, op: dict) -> str:
 
 
 def _set_tab_color(workbook: Any, op: dict) -> str:
-    """设置工作表标签颜色.
+    """璁剧疆宸ヤ綔琛ㄦ爣绛鹃鑹?
 
     Args:
-        sheet: 工作表名称
-        color: 颜色 (#RRGGBB)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        color: 棰滆壊 (#RRGGBB)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     color = op.get("color", "#FF0000")
@@ -1464,13 +1547,13 @@ def _set_tab_color(workbook: Any, op: dict) -> str:
     return f"set_tab_color: {sheet.Name} -> {color}"
 
 
-# ============ Range 范围操作 (10 个) ============
+# ============ Range 鑼冨洿鎿嶄綔 (10 涓? ============
 
 def _list_used_range(workbook: Any, op: dict) -> dict:
-    """列出已使用范围.
+    """鍒楀嚭宸蹭娇鐢ㄨ寖鍥?
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     used = sheet.UsedRange
@@ -1484,12 +1567,12 @@ def _list_used_range(workbook: Any, op: dict) -> dict:
 
 
 def _clear_range(workbook: Any, op: dict) -> str:
-    """清除范围内容.
+    """娓呴櫎鑼冨洿鍐呭.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        clear_type: 清除类型 (all/formulas/contents/comments)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        clear_type: 娓呴櫎绫诲瀷 (all/formulas/contents/comments)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -1497,16 +1580,16 @@ def _clear_range(workbook: Any, op: dict) -> str:
 
     sheet.Range(range_str)
     rng = sheet.Range(range_str)
-    # 按类型分派到不同的 Clear 方法
+    # 鎸夌被鍨嬪垎娲惧埌涓嶅悓鐨?Clear 鏂规硶
     if clear_type == "all":
         rng.Clear()
     elif clear_type == "contents":
         rng.ClearContents()
     elif clear_type == "formulas":
-        # 清除公式但保留格式
+        # 娓呴櫎鍏紡浣嗕繚鐣欐牸寮?
         rng.ClearContents()
     elif clear_type == "comments":
-        # 遍历每个单元格删除批注
+        # 閬嶅巻姣忎釜鍗曞厓鏍煎垹闄ゆ壒娉?
         for row in rng.Rows:
             for cell in row.Cells:
                 if cell.Comment is not None:
@@ -1518,18 +1601,18 @@ def _clear_range(workbook: Any, op: dict) -> str:
     else:
         raise COMOperationError(
             "clear_range",
-            f"clear_type 必须是 all/contents/formulas/comments/hyperlinks/formats,"
-            f" 收到 '{clear_type}'",
+            f"clear_type 蹇呴』鏄?all/contents/formulas/comments/hyperlinks/formats,"
+            f" 鏀跺埌 '{clear_type}'",
         )
     return f"cleared_range: {range_str} ({clear_type})"
 
 
 def _copy_range(workbook: Any, op: dict) -> str:
-    """复制范围.
+    """澶嶅埗鑼冨洿.
 
     Args:
-        sheet: 源工作表名称
-        range: 源范围
+        sheet: 婧愬伐浣滆〃鍚嶇О
+        range: 婧愯寖鍥?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -1538,18 +1621,18 @@ def _copy_range(workbook: Any, op: dict) -> str:
 
 
 def _paste_range(workbook: Any, op: dict) -> str:
-    """粘贴范围.
+    """绮樿创鑼冨洿.
 
     Args:
-        sheet: 目标工作表名称
-        target_cell: 目标单元格 (如 "A1")
-        paste_type: 粘贴类型 (all/formulas/values/formats)
+        sheet: 鐩爣宸ヤ綔琛ㄥ悕绉?
+        target_cell: 鐩爣鍗曞厓鏍?(濡?"A1")
+        paste_type: 绮樿创绫诲瀷 (all/formulas/values/formats)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     target_cell = op.get("target_cell", "A1")
     paste_type = op.get("paste_type", "all")
 
-    # 粘贴类型映射
+    # 绮樿创绫诲瀷鏄犲皠
     paste_map = {
         "all": -4104,        # xlPasteAll
         "formulas": -4122,   # xlPasteFormulas
@@ -1570,11 +1653,11 @@ def _paste_range(workbook: Any, op: dict) -> str:
 
 
 def _cut_range(workbook: Any, op: dict) -> str:
-    """剪切范围.
+    """鍓垏鑼冨洿.
 
     Args:
-        sheet: 工作表名称
-        range: 源范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 婧愯寖鍥?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -1583,12 +1666,12 @@ def _cut_range(workbook: Any, op: dict) -> str:
 
 
 def _delete_cells(workbook: Any, op: dict) -> str:
-    """删除单元格.
+    """鍒犻櫎鍗曞厓鏍?
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        shift: 移动方向 (left/up)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        shift: 绉诲姩鏂瑰悜 (left/up)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -1604,12 +1687,12 @@ def _delete_cells(workbook: Any, op: dict) -> str:
 
 
 def _insert_cells(workbook: Any, op: dict) -> str:
-    """插入单元格.
+    """鎻掑叆鍗曞厓鏍?
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        shift: 移动方向 (right/down)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        shift: 绉诲姩鏂瑰悜 (right/down)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -1625,12 +1708,12 @@ def _insert_cells(workbook: Any, op: dict) -> str:
 
 
 def _set_row_height(workbook: Any, op: dict) -> str:
-    """设置行高.
+    """璁剧疆琛岄珮.
 
     Args:
-        sheet: 工作表名称
-        row: 行号 (或范围, 如 "1:3" 表示 1-3 行)
-        height: 高度 (磅)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        row: 琛屽彿 (鎴栬寖鍥? 濡?"1:3" 琛ㄧず 1-3 琛?
+        height: 楂樺害 (纾?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     row = op.get("row", 1)
@@ -1640,12 +1723,12 @@ def _set_row_height(workbook: Any, op: dict) -> str:
 
 
 def _set_column_width(workbook: Any, op: dict) -> str:
-    """设置列宽.
+    """璁剧疆鍒楀.
 
     Args:
-        sheet: 工作表名称
-        column: 列标识 (如 "A" 或 "A:C")
-        width: 宽度 (字符单位)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        column: 鍒楁爣璇?(濡?"A" 鎴?"A:C")
+        width: 瀹藉害 (瀛楃鍗曚綅)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     column = op.get("column", "A")
@@ -1655,11 +1738,11 @@ def _set_column_width(workbook: Any, op: dict) -> str:
 
 
 def _hide_rows(workbook: Any, op: dict) -> str:
-    """隐藏行.
+    """闅愯棌琛?
 
     Args:
-        sheet: 工作表名称
-        rows: 行号或范围 (如 "1" 或 "1:5")
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        rows: 琛屽彿鎴栬寖鍥?(濡?"1" 鎴?"1:5")
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     rows = op.get("rows", "1")
@@ -1667,13 +1750,13 @@ def _hide_rows(workbook: Any, op: dict) -> str:
     return f"hidden_rows: {sheet.Name} rows {rows}"
 
 
-# ============ Charts 图表操作 (10 个) ============
+# ============ Charts 鍥捐〃鎿嶄綔 (10 涓? ============
 
 def _list_charts(workbook: Any, op: dict) -> list[dict]:
-    """列出所有图表.
+    """鍒楀嚭鎵€鏈夊浘琛?
 
     Args:
-        sheet: 工作表名称 (可选, 不填则列出所有工作表)
+        sheet: 宸ヤ綔琛ㄥ悕绉?(鍙€? 涓嶅～鍒欏垪鍑烘墍鏈夊伐浣滆〃)
     """
     result = []
     sheet_name = op.get("sheet", "")
@@ -1698,11 +1781,11 @@ def _list_charts(workbook: Any, op: dict) -> list[dict]:
 
 
 def _get_chart_info(workbook: Any, op: dict) -> dict:
-    """获取图表信息.
+    """鑾峰彇鍥捐〃淇℃伅.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引 (从 1 开始)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩 (浠?1 寮€濮?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1725,12 +1808,12 @@ def _get_chart_info(workbook: Any, op: dict) -> dict:
 
 
 def _set_chart_title(workbook: Any, op: dict) -> str:
-    """设置图表标题.
+    """璁剧疆鍥捐〃鏍囬.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        title: 标题文本
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        title: 鏍囬鏂囨湰
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1743,13 +1826,13 @@ def _set_chart_title(workbook: Any, op: dict) -> str:
 
 
 def _set_chart_legend(workbook: Any, op: dict) -> str:
-    """设置图表图例.
+    """璁剧疆鍥捐〃鍥句緥.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        show: 是否显示图例
-        position: 图例位置 (bottom/top/left/right/corner)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        show: 鏄惁鏄剧ず鍥句緥
+        position: 鍥句緥浣嶇疆 (bottom/top/left/right/corner)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1772,14 +1855,14 @@ def _set_chart_legend(workbook: Any, op: dict) -> str:
 
 
 def _add_chart_series(workbook: Any, op: dict) -> str:
-    """添加图表系列.
+    """娣诲姞鍥捐〃绯诲垪.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        series_name: 系列名称
-        values_range: 数值范围
-        categories_range: 分类范围 (可选)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        series_name: 绯诲垪鍚嶇О
+        values_range: 鏁板€艰寖鍥?
+        categories_range: 鍒嗙被鑼冨洿 (鍙€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1794,7 +1877,7 @@ def _add_chart_series(workbook: Any, op: dict) -> str:
         try:
             series.Values = sheet.Range(values_range)
         except Exception:
-            # 某些 Excel 版本需要用地址字符串
+            # 鏌愪簺 Excel 鐗堟湰闇€瑕佺敤鍦板潃瀛楃涓?
             series.Values = f"={sheet.Name}!{sheet.Range(values_range).Address}"
     if categories_range:
         try:
@@ -1806,12 +1889,12 @@ def _add_chart_series(workbook: Any, op: dict) -> str:
 
 
 def _remove_chart_series(workbook: Any, op: dict) -> str:
-    """移除图表系列.
+    """绉婚櫎鍥捐〃绯诲垪.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        series_index: 系列索引 (从 1 开始)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        series_index: 绯诲垪绱㈠紩 (浠?1 寮€濮?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1825,15 +1908,15 @@ def _remove_chart_series(workbook: Any, op: dict) -> str:
 
 
 def _set_chart_axis(workbook: Any, op: dict) -> str:
-    """设置图表轴.
+    """璁剧疆鍥捐〃杞?
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        axis: 轴类型 (x/y/value1/value2)
-        title: 轴标题 (可选)
-        min_scale: 最小值 (可选)
-        max_scale: 最大值 (可选)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        axis: 杞寸被鍨?(x/y/value1/value2)
+        title: 杞存爣棰?(鍙€?
+        min_scale: 鏈€灏忓€?(鍙€?
+        max_scale: 鏈€澶у€?(鍙€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1861,12 +1944,12 @@ def _set_chart_axis(workbook: Any, op: dict) -> str:
 
 
 def _change_chart_type(workbook: Any, op: dict) -> str:
-    """更改图表类型.
+    """鏇存敼鍥捐〃绫诲瀷.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        chart_type: 新图表类型 (column/bar/line/pie/scatter/area)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        chart_type: 鏂板浘琛ㄧ被鍨?(column/bar/line/pie/scatter/area)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1879,19 +1962,19 @@ def _change_chart_type(workbook: Any, op: dict) -> str:
 
 
 def _export_chart(workbook: Any, op: dict) -> str:
-    """导出图表为图片.
+    """瀵煎嚭鍥捐〃涓哄浘鐗?
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
-        output_path: 输出图片路径
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
+        output_path: 杈撳嚭鍥剧墖璺緞
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
     output_path = op.get("output_path", "")
 
     if not output_path:
-        raise COMOperationError("export_chart", "output_path 不能为空")
+        raise COMOperationError("export_chart", "output_path 涓嶈兘涓虹┖")
 
     chart = sheet.ChartObjects(chart_index).Chart
     chart.Export(output_path)
@@ -1899,11 +1982,11 @@ def _export_chart(workbook: Any, op: dict) -> str:
 
 
 def _delete_chart(workbook: Any, op: dict) -> str:
-    """删除图表.
+    """鍒犻櫎鍥捐〃.
 
     Args:
-        sheet: 工作表名称
-        chart_index: 图表索引
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        chart_index: 鍥捐〃绱㈠紩
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     chart_index = op.get("chart_index", 1)
@@ -1914,17 +1997,17 @@ def _delete_chart(workbook: Any, op: dict) -> str:
     return f"deleted_chart: {chart_name}"
 
 
-# ============ Format 格式操作 (10 个) ============
+# ============ Format 鏍煎紡鎿嶄綔 (10 涓? ============
 
 def _set_font(workbook: Any, op: dict) -> str:
-    """设置字体.
+    """璁剧疆瀛椾綋.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        font_name: 字体名称 (如 "微软雅黑")
-        font_size: 字体大小
-        font_color: 字体颜色 (#RRGGBB)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        font_name: 瀛椾綋鍚嶇О (濡?"寰蒋闆呴粦")
+        font_size: 瀛椾綋澶у皬
+        font_color: 瀛椾綋棰滆壊 (#RRGGBB)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -1945,11 +2028,11 @@ def _set_font(workbook: Any, op: dict) -> str:
 
 
 def _set_font_bold(workbook: Any, op: dict) -> str:
-    """设置粗体.
+    """璁剧疆绮椾綋.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
         bold: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -1960,11 +2043,11 @@ def _set_font_bold(workbook: Any, op: dict) -> str:
 
 
 def _set_font_italic(workbook: Any, op: dict) -> str:
-    """设置斜体.
+    """璁剧疆鏂滀綋.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
         italic: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -1975,11 +2058,11 @@ def _set_font_italic(workbook: Any, op: dict) -> str:
 
 
 def _set_font_underline(workbook: Any, op: dict) -> str:
-    """设置下划线.
+    """璁剧疆涓嬪垝绾?
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
         underline: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -1990,13 +2073,13 @@ def _set_font_underline(workbook: Any, op: dict) -> str:
 
 
 def _set_alignment(workbook: Any, op: dict) -> str:
-    """设置对齐.
+    """璁剧疆瀵归綈.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        horizontal: 水平对齐 (left/center/right/general)
-        vertical: 垂直对齐 (top/middle/bottom)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        horizontal: 姘村钩瀵归綈 (left/center/right/general)
+        vertical: 鍨傜洿瀵归綈 (top/middle/bottom)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2026,11 +2109,11 @@ def _set_alignment(workbook: Any, op: dict) -> str:
 
 
 def _set_wrap_text(workbook: Any, op: dict) -> str:
-    """设置自动换行.
+    """璁剧疆鑷姩鎹㈣.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
         wrap: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -2041,12 +2124,12 @@ def _set_wrap_text(workbook: Any, op: dict) -> str:
 
 
 def _set_indent(workbook: Any, op: dict) -> str:
-    """设置缩进.
+    """璁剧疆缂╄繘.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        indent: 缩进级别 (0-15)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        indent: 缂╄繘绾у埆 (0-15)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2058,12 +2141,12 @@ def _set_indent(workbook: Any, op: dict) -> str:
 
 
 def _set_orientation(workbook: Any, op: dict) -> str:
-    """设置文字方向.
+    """璁剧疆鏂囧瓧鏂瑰悜.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        orientation: 角度 (0=水平, 90=垂直, 45=-45度)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        orientation: 瑙掑害 (0=姘村钩, 90=鍨傜洿, 45=-45搴?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2073,11 +2156,11 @@ def _set_orientation(workbook: Any, op: dict) -> str:
 
 
 def _clear_format(workbook: Any, op: dict) -> str:
-    """清除格式.
+    """娓呴櫎鏍煎紡.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2086,12 +2169,12 @@ def _clear_format(workbook: Any, op: dict) -> str:
 
 
 def _copy_format(workbook: Any, op: dict) -> str:
-    """复制格式.
+    """澶嶅埗鏍煎紡.
 
     Args:
-        sheet: 工作表名称
-        source_range: 源格式范围
-        target_range: 目标范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        source_range: 婧愭牸寮忚寖鍥?
+        target_range: 鐩爣鑼冨洿
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     source_range = op.get("source_range", "A1")
@@ -2104,29 +2187,29 @@ def _copy_format(workbook: Any, op: dict) -> str:
     return f"copied_format: {source_range} -> {target_range}"
 
 
-# ============ Page Setup 页面设置 (10 个) ============
+# ============ Page Setup 椤甸潰璁剧疆 (10 涓? ============
 
 def _set_page_orientation(workbook: Any, op: dict) -> str:
-    """设置页面方向.
+    """璁剧疆椤甸潰鏂瑰悜.
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
         orientation: portrait/landscape
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     orientation = op.get("orientation", "portrait")
 
-    # 1=纵向 xlPortrait, 2=横向 xlLandscape
+    # 1=绾靛悜 xlPortrait, 2=妯悜 xlLandscape
     sheet.PageSetup.Orientation = 1 if orientation == "portrait" else 2
     return f"set_page_orientation: {orientation}"
 
 
 def _set_page_size(workbook: Any, op: dict) -> str:
-    """设置页面大小.
+    """璁剧疆椤甸潰澶у皬.
 
     Args:
-        sheet: 工作表名称
-        size: A4/A3/Letter/Legal 或编号 (1=Letter, 5=Legal, 9=A4, 8=A3)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        size: A4/A3/Letter/Legal 鎴栫紪鍙?(1=Letter, 5=Legal, 9=A4, 8=A3)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     size = op.get("size", "A4")
@@ -2151,16 +2234,16 @@ def _set_page_size(workbook: Any, op: dict) -> str:
 
 
 def _set_page_margins(workbook: Any, op: dict) -> str:
-    """设置页边距.
+    """璁剧疆椤佃竟璺?
 
     Args:
-        sheet: 工作表名称
-        top: 上边距 (英寸)
-        bottom: 下边距 (英寸)
-        left: 左边距 (英寸)
-        right: 右边距 (英寸)
-        header: 页眉边距 (英寸)
-        footer: 页脚边距 (英寸)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        top: 涓婅竟璺?(鑻卞)
+        bottom: 涓嬭竟璺?(鑻卞)
+        left: 宸﹁竟璺?(鑻卞)
+        right: 鍙宠竟璺?(鑻卞)
+        header: 椤电湁杈硅窛 (鑻卞)
+        footer: 椤佃剼杈硅窛 (鑻卞)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     page_setup = sheet.PageSetup
@@ -2182,11 +2265,11 @@ def _set_page_margins(workbook: Any, op: dict) -> str:
 
 
 def _set_header(workbook: Any, op: dict) -> str:
-    """设置页眉.
+    """璁剧疆椤电湁.
 
     Args:
-        sheet: 工作表名称
-        text: 页眉文本 (&L左& C中& R右)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        text: 椤电湁鏂囨湰 (&L宸? C涓? R鍙?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     text = op.get("text", "")
@@ -2195,11 +2278,11 @@ def _set_header(workbook: Any, op: dict) -> str:
 
 
 def _set_footer(workbook: Any, op: dict) -> str:
-    """设置页脚.
+    """璁剧疆椤佃剼.
 
     Args:
-        sheet: 工作表名称
-        text: 页脚文本 (&L左& C中& R右)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        text: 椤佃剼鏂囨湰 (&L宸? C涓? R鍙?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     text = op.get("text", "")
@@ -2208,12 +2291,12 @@ def _set_footer(workbook: Any, op: dict) -> str:
 
 
 def _add_print_title(workbook: Any, op: dict) -> str:
-    """添加打印标题 (重复打印行/列).
+    """娣诲姞鎵撳嵃鏍囬 (閲嶅鎵撳嵃琛?鍒?.
 
     Args:
-        sheet: 工作表名称
-        rows: 重复行 (如 "$1:$1")
-        columns: 重复列 (如 "$A:$A")
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        rows: 閲嶅琛?(濡?"$1:$1")
+        columns: 閲嶅鍒?(濡?"$A:$A")
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     rows = op.get("rows", "")
@@ -2228,11 +2311,11 @@ def _add_print_title(workbook: Any, op: dict) -> str:
 
 
 def _set_print_area(workbook: Any, op: dict) -> str:
-    """设置打印区域.
+    """璁剧疆鎵撳嵃鍖哄煙.
 
     Args:
-        sheet: 工作表名称
-        range: 打印区域 (如 "A1:D20")
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鎵撳嵃鍖哄煙 (濡?"A1:D20")
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2241,11 +2324,11 @@ def _set_print_area(workbook: Any, op: dict) -> str:
 
 
 def _set_page_break(workbook: Any, op: dict) -> str:
-    """设置分页符.
+    """璁剧疆鍒嗛〉绗?
 
     Args:
-        sheet: 工作表名称
-        cell: 分页符位置 (如 "A20")
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        cell: 鍒嗛〉绗︿綅缃?(濡?"A20")
         break_type: row/column
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -2262,11 +2345,11 @@ def _set_page_break(workbook: Any, op: dict) -> str:
 
 
 def _set_scale(workbook: Any, op: dict) -> str:
-    """设置缩放比例.
+    """璁剧疆缂╂斁姣斾緥.
 
     Args:
-        sheet: 工作表名称
-        scale: 缩放比例 (10-400 百分比)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        scale: 缂╂斁姣斾緥 (10-400 鐧惧垎姣?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     scale = op.get("scale", 100)
@@ -2275,17 +2358,17 @@ def _set_scale(workbook: Any, op: dict) -> str:
 
 
 def _set_fit_to_page(workbook: Any, op: dict) -> str:
-    """设置适应页面.
+    """璁剧疆閫傚簲椤甸潰.
 
     Args:
-        sheet: 工作表名称
-        fit_width: 适应宽度 (1=单页宽, 0=自动)
-        fit_height: 适应高度 (1=单页高, 0=自动)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        fit_width: 閫傚簲瀹藉害 (1=鍗曢〉瀹? 0=鑷姩)
+        fit_height: 閫傚簲楂樺害 (1=鍗曢〉楂? 0=鑷姩)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     page_setup = sheet.PageSetup
 
-    # Must disable Zoom before setting FitToPages — Zoom and FitToPages are mutually exclusive
+    # Must disable Zoom before setting FitToPages 鈥?Zoom and FitToPages are mutually exclusive
     # In Excel COM, Zoom=False means "use FitToPages instead of percentage zoom"
     page_setup.Zoom = False
     try:
@@ -2300,37 +2383,37 @@ def _set_fit_to_page(workbook: Any, op: dict) -> str:
     return f"set_fit_to_page: {page_setup.FitToPagesWide}x{page_setup.FitToPagesTall}"
 
 
-# ============ Formulas 公式操作 (8 个) ============
+# ============ Formulas 鍏紡鎿嶄綔 (8 涓? ============
 
 def _set_array_formula(workbook: Any, op: dict) -> str:
-    """设置数组公式 (Ctrl+Shift+Enter 公式).
+    """璁剧疆鏁扮粍鍏紡 (Ctrl+Shift+Enter 鍏紡).
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        formula: 公式字符串
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        formula: 鍏紡瀛楃涓?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
     formula = op.get("formula", "")
     if not formula:
-        raise COMOperationError("set_array_formula", "formula 不能为空")
+        raise COMOperationError("set_array_formula", "formula 涓嶈兘涓虹┖")
     sheet.Range(range_str).FormulaArray = formula
     return f"set_array_formula: {range_str} = {formula}"
 
 
 def _evaluate_formula(workbook: Any, op: dict) -> Any:
-    """计算并返回公式结果.
+    """璁＄畻骞惰繑鍥炲叕寮忕粨鏋?
 
     Args:
-        sheet: 工作表名称
-        cell: 单元格地址 (如 A1)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        cell: 鍗曞厓鏍煎湴鍧€ (濡?A1)
 
-    注: 会先调用 Application.Calculate() 确保返回最新值.
+    娉? 浼氬厛璋冪敤 Application.Calculate() 纭繚杩斿洖鏈€鏂板€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A1")
-    # 强制重算, 避免 manual 模式下返回脏值
+    # 寮哄埗閲嶇畻, 閬垮厤 manual 妯″紡涓嬭繑鍥炶剰鍊?
     try:
         workbook.Application.Calculate()
     except Exception:
@@ -2340,15 +2423,15 @@ def _evaluate_formula(workbook: Any, op: dict) -> Any:
 
 
 def _replace_formula(workbook: Any, op: dict) -> str:
-    """替换范围内所有公式 (按字符串匹配).
+    """鏇挎崲鑼冨洿鍐呮墍鏈夊叕寮?(鎸夊瓧绗︿覆鍖归厤).
 
     Args:
-        sheet: 工作表名称
-        range: 范围
-        find: 查找字符串
-        replace: 替换字符串
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
+        find: 鏌ユ壘瀛楃涓?
+        replace: 鏇挎崲瀛楃涓?
 
-    注意: 简单子串匹配, find="A1" 会同时影响 "AA1" 等含 A1 子串的公式.
+    娉ㄦ剰: 绠€鍗曞瓙涓插尮閰? find="A1" 浼氬悓鏃跺奖鍝?"AA1" 绛夊惈 A1 瀛愪覆鐨勫叕寮?
     """
     import re
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -2356,10 +2439,10 @@ def _replace_formula(workbook: Any, op: dict) -> str:
     find = op.get("find", "")
     replace = op.get("replace", "")
     if not find:
-        raise COMOperationError("replace_formula", "find 不能为空")
+        raise COMOperationError("replace_formula", "find 涓嶈兘涓虹┖")
 
     rng = sheet.Range(range_str)
-    # 使用 \b 单词边界避免 AA1 误匹配 A1
+    # 浣跨敤 \b 鍗曡瘝杈圭晫閬垮厤 AA1 璇尮閰?A1
     pattern = re.compile(r"\b" + re.escape(find) + r"\b")
     count = 0
     for row in rng.Rows:
@@ -2374,11 +2457,11 @@ def _replace_formula(workbook: Any, op: dict) -> str:
 
 
 def _find_formula_cells(workbook: Any, op: dict) -> list[dict]:
-    """查找范围内所有含公式的单元格.
+    """鏌ユ壘鑼冨洿鍐呮墍鏈夊惈鍏紡鐨勫崟鍏冩牸.
 
     Args:
-        sheet: 工作表名称
-        range: 范围 (留空使用 UsedRange)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿 (鐣欑┖浣跨敤 UsedRange)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "")
@@ -2407,39 +2490,39 @@ def _find_formula_cells(workbook: Any, op: dict) -> list[dict]:
 
 
 def _convert_to_values(workbook: Any, op: dict) -> str:
-    """将公式转换为静态值.
+    """灏嗗叕寮忚浆鎹负闈欐€佸€?
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
 
-    注: 先强制重算, 若单元格值是 Excel 错误 (#NAME? / #VALUE! 等) 则拒绝覆盖原公式.
+    娉? 鍏堝己鍒堕噸绠? 鑻ュ崟鍏冩牸鍊兼槸 Excel 閿欒 (#NAME? / #VALUE! 绛? 鍒欐嫆缁濊鐩栧師鍏紡.
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
     rng = sheet.Range(range_str)
-    # 强制重算后再读取
+    # 寮哄埗閲嶇畻鍚庡啀璇诲彇
     try:
         workbook.Application.Calculate()
     except Exception:
         pass
     value = rng.Value
-    # 检测 Excel 错误值字符串
+    # 妫€娴?Excel 閿欒鍊煎瓧绗︿覆
     if isinstance(value, str) and value.startswith("#") and value.endswith("!"):
         raise COMOperationError(
             "convert_to_values",
-            f"范围内含有计算错误 {value}, 拒绝覆盖原公式",
+            f"范围内含有计算错误 {value}，拒绝覆盖原公式",
         )
     rng.Value = value
     return f"converted_to_values: {range_str}"
 
 
 def _get_formula_info(workbook: Any, op: dict) -> dict:
-    """获取公式信息 (类型/值/是否数组公式).
+    """鑾峰彇鍏紡淇℃伅 (绫诲瀷/鍊?鏄惁鏁扮粍鍏紡).
 
     Args:
-        sheet: 工作表名称
-        cell: 单元格地址
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        cell: 鍗曞厓鏍煎湴鍧€
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A1")
@@ -2454,12 +2537,12 @@ def _get_formula_info(workbook: Any, op: dict) -> dict:
 
 
 def _define_name(workbook: Any, op: dict) -> str:
-    """定义名称 (workbook level).
+    """瀹氫箟鍚嶇О (workbook level).
 
     Args:
-        name: 名称
-        refers_to: 引用 (如 '=Sheet1!$A$1:$A$10')
-        scope: 范围 sheet name (可选, 默认为工作簿级)
+        name: 鍚嶇О
+        refers_to: 寮曠敤 (濡?'=Sheet1!$A$1:$A$10')
+        scope: 鑼冨洿 sheet name (鍙€? 榛樿涓哄伐浣滅翱绾?
     """
     import re
     name = op.get("name", "")
@@ -2467,56 +2550,56 @@ def _define_name(workbook: Any, op: dict) -> str:
     scope = op.get("scope", "")
 
     if not name or not refers_to:
-        raise COMOperationError("define_name", "name 和 refers_to 不能为空")
+        raise COMOperationError("define_name", "name 鍜?refers_to 涓嶈兘涓虹┖")
 
-    # 名称合法性: 字母/下划线开头, 后续可含字母数字下划线/点号
+    # 鍚嶇О鍚堟硶鎬? 瀛楁瘝/涓嬪垝绾垮紑澶? 鍚庣画鍙惈瀛楁瘝鏁板瓧涓嬪垝绾?鐐瑰彿
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", name):
         raise COMOperationError(
             "define_name",
-            f"名称 '{name}' 不合法 (须以字母/下划线开头, 仅含字母数字下划线)",
+            f"鍚嶇О '{name}' 涓嶅悎娉?(椤讳互瀛楁瘝/涓嬪垝绾垮紑澶? 浠呭惈瀛楁瘝鏁板瓧涓嬪垝绾?",
         )
 
-    # 重复检测
+    # 閲嶅妫€娴?
     try:
         existing = workbook.Names(name)
         if existing is not None:
             raise COMOperationError(
                 "define_name",
-                f"名称 '{name}' 已存在, 请先删除或换名",
+            f"名称 '{name}' 已存在，请先删除或更换名称",
             )
     except COMOperationError:
         raise
     except Exception:
-        # 名称不存在 (正常)
+        # 鍚嶇О涓嶅瓨鍦?(姝ｅ父)
         pass
 
     if scope:
-        # 工作表级名称
+        # 宸ヤ綔琛ㄧ骇鍚嶇О
         ws = workbook.Worksheets(scope)
         ws.Names.Add(Name=name, RefersTo=refers_to)
     else:
-        # 工作簿级名称
+        # 宸ヤ綔绨跨骇鍚嶇О
         workbook.Names.Add(Name=name, RefersTo=refers_to)
     return f"defined_name: {name} = {refers_to}"
 
 
-# ============ Tables 表格 (ListObject) (8 个) ============
+# ============ Tables 琛ㄦ牸 (ListObject) (8 涓? ============
 
 def _create_table(workbook: Any, op: dict) -> str:
-    """创建 Excel 表格 (ListObject).
+    """鍒涘缓 Excel 琛ㄦ牸 (ListObject).
 
     Args:
-        sheet: 工作表名称
-        range: 表格数据范围 (含表头)
-        table_name: 表格名称
-        style_name: 表格样式名 (如 'TableStyleMedium2')
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 琛ㄦ牸鏁版嵁鑼冨洿 (鍚〃澶?
+        table_name: 琛ㄦ牸鍚嶇О
+        style_name: 琛ㄦ牸鏍峰紡鍚?(濡?'TableStyleMedium2')
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
     table_name = op.get("table_name", "")
     style_name = op.get("style_name", "TableStyleMedium2")
 
-    # 检查重名并自动追加序号
+    # 妫€鏌ラ噸鍚嶅苟鑷姩杩藉姞搴忓彿
     existing_names: set[str] = set()
     for i in range(1, sheet.ListObjects.Count + 1):
         existing_names.add(sheet.ListObjects(i).Name)
@@ -2531,7 +2614,7 @@ def _create_table(workbook: Any, op: dict) -> str:
     elif table_name in existing_names:
         raise COMOperationError(
             "create_table",
-            f"表格名 '{table_name}' 已被占用, 请指定其他名称",
+            f"表格名 '{table_name}' 已被占用，请指定其他名称",
         )
 
     rng = sheet.Range(range_str)
@@ -2544,16 +2627,16 @@ def _create_table(workbook: Any, op: dict) -> str:
     try:
         table.TableStyle = style_name
     except Exception:
-        logger.warning(f"无法应用表格样式 {style_name}")
+        logger.warning(f"鏃犳硶搴旂敤琛ㄦ牸鏍峰紡 {style_name}")
 
     return f"created_table: {table_name} ({range_str})"
 
 
 def _list_tables(workbook: Any, op: dict) -> list[dict]:
-    """列出工作簿中所有 Excel 表格.
+    """鍒楀嚭宸ヤ綔绨夸腑鎵€鏈?Excel 琛ㄦ牸.
 
     Args:
-        sheet: 工作表名称 (可选, 留空列出所有)
+        sheet: 宸ヤ綔琛ㄥ悕绉?(鍙€? 鐣欑┖鍒楀嚭鎵€鏈?
     """
     sheet_name = op.get("sheet", "")
     tables_info = []
@@ -2581,18 +2664,18 @@ def _list_tables(workbook: Any, op: dict) -> list[dict]:
 
 
 def _resize_table(workbook: Any, op: dict) -> str:
-    """调整 Excel 表格范围.
+    """璋冩暣 Excel 琛ㄦ牸鑼冨洿.
 
     Args:
-        sheet: 工作表名称
-        table_name: 表格名称
-        range: 新范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        table_name: 琛ㄦ牸鍚嶇О
+        range: 鏂拌寖鍥?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     table_name = op.get("table_name", "")
     range_str = op.get("range", "")
     if not table_name or not range_str:
-        raise COMOperationError("resize_table", "table_name 和 range 不能为空")
+        raise COMOperationError("resize_table", "table_name 鍜?range 涓嶈兘涓虹┖")
 
     tbl = sheet.ListObjects(table_name)
     tbl.Resize(sheet.Range(range_str))
@@ -2600,18 +2683,18 @@ def _resize_table(workbook: Any, op: dict) -> str:
 
 
 def _set_table_style(workbook: Any, op: dict) -> str:
-    """设置表格样式.
+    """璁剧疆琛ㄦ牸鏍峰紡.
 
     Args:
-        sheet: 工作表名称
-        table_name: 表格名称
-        style_name: 样式名 (如 'TableStyleLight1')
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        table_name: 琛ㄦ牸鍚嶇О
+        style_name: 鏍峰紡鍚?(濡?'TableStyleLight1')
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     table_name = op.get("table_name", "")
     style_name = op.get("style_name", "TableStyleLight1")
     if not table_name:
-        raise COMOperationError("set_table_style", "table_name 不能为空")
+        raise COMOperationError("set_table_style", "table_name 涓嶈兘涓虹┖")
 
     tbl = sheet.ListObjects(table_name)
     tbl.TableStyle = style_name
@@ -2619,18 +2702,18 @@ def _set_table_style(workbook: Any, op: dict) -> str:
 
 
 def _show_table_totals(workbook: Any, op: dict) -> str:
-    """显示/隐藏表格汇总行.
+    """鏄剧ず/闅愯棌琛ㄦ牸姹囨€昏.
 
     Args:
-        sheet: 工作表名称
-        table_name: 表格名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        table_name: 琛ㄦ牸鍚嶇О
         show: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     table_name = op.get("table_name", "")
     show = op.get("show", True)
     if not table_name:
-        raise COMOperationError("show_table_totals", "table_name 不能为空")
+        raise COMOperationError("show_table_totals", "table_name 涓嶈兘涓虹┖")
 
     tbl = sheet.ListObjects(table_name)
     tbl.ShowTotals = show
@@ -2638,33 +2721,33 @@ def _show_table_totals(workbook: Any, op: dict) -> str:
 
 
 def _add_table_column(workbook: Any, op: dict) -> str:
-    """为表格添加计算列 (公式列).
+    """涓鸿〃鏍兼坊鍔犺绠楀垪 (鍏紡鍒?.
 
     Args:
-        sheet: 工作表名称
-        table_name: 表格名称
-        column_name: 新列名
-        formula: 列公式 (如 '=[@Qty]*[@Price]')
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        table_name: 琛ㄦ牸鍚嶇О
+        column_name: 鏂板垪鍚?
+        formula: 鍒楀叕寮?(濡?'=[@Qty]*[@Price]')
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     table_name = op.get("table_name", "")
     column_name = op.get("column_name", "")
     formula = op.get("formula", "")
     if not table_name or not column_name:
-        raise COMOperationError("add_table_column", "table_name 和 column_name 不能为空")
+        raise COMOperationError("add_table_column", "table_name 鍜?column_name 涓嶈兘涓虹┖")
 
     tbl = sheet.ListObjects(table_name)
 
     new_col = tbl.ListColumns.Add()
     new_col.Name = column_name
     if formula:
-        # formula 须以 = 开头
+        # formula 椤讳互 = 寮€澶?
         if not formula.startswith("="):
             formula = "=" + formula
         if new_col.DataBodyRange is None:
             raise COMOperationError(
                 "add_table_column",
-                "空表无法添加计算列,需先填入至少一行数据",
+                "空表无法添加计算列，需要先填入至少一行数据",
             )
         new_col.DataBodyRange.Formula = formula
 
@@ -2672,27 +2755,27 @@ def _add_table_column(workbook: Any, op: dict) -> str:
 
 
 def _remove_table_column(workbook: Any, op: dict) -> str:
-    """删除表格列.
+    """鍒犻櫎琛ㄦ牸鍒?
 
     Args:
-        sheet: 工作表名称
-        table_name: 表格名称
-        column_name: 列名
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        table_name: 琛ㄦ牸鍚嶇О
+        column_name: 鍒楀悕
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     table_name = op.get("table_name", "")
     column_name = op.get("column_name", "")
     if not table_name or not column_name:
-        raise COMOperationError("remove_table_column", "table_name 和 column_name 不能为空")
+        raise COMOperationError("remove_table_column", "table_name 鍜?column_name 涓嶈兘涓虹┖")
 
     tbl = sheet.ListObjects(table_name)
-    # 关闭 totals row 防止干扰
+    # 鍏抽棴 totals row 闃叉骞叉壈
     try:
         tbl.ShowTotals = False
     except Exception:
         pass
 
-    # ListColumns 遍历查找
+    # ListColumns 閬嶅巻鏌ユ壘
     target_col = None
     count = int(tbl.ListColumns.Count)
     for i in range(1, count + 1):
@@ -2710,12 +2793,12 @@ def _remove_table_column(workbook: Any, op: dict) -> str:
         target_col.Delete()
         return f"removed_table_column: {table_name}.{column_name}"
 
-    # 找不到则按整列 Range 删除
+    # 鎵句笉鍒板垯鎸夋暣鍒?Range 鍒犻櫎
     try:
         col_count = int(tbl.Range.Columns.Count)
         for i in range(1, col_count + 1):
             col_range = tbl.Range.Columns(i)
-            # 头部单元格
+            # 澶撮儴鍗曞厓鏍?
             try:
                 header = str(col_range.Cells(1, 1).Value)
                 if header == column_name:
@@ -2730,30 +2813,30 @@ def _remove_table_column(workbook: Any, op: dict) -> str:
 
 
 def _delete_table(workbook: Any, op: dict) -> str:
-    """删除 Excel 表格 (仅删除表格结构, 不删除数据).
+    """鍒犻櫎 Excel 琛ㄦ牸 (浠呭垹闄よ〃鏍肩粨鏋? 涓嶅垹闄ゆ暟鎹?.
 
     Args:
-        sheet: 工作表名称
-        table_name: 表格名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        table_name: 琛ㄦ牸鍚嶇О
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     table_name = op.get("table_name", "")
     if not table_name:
-        raise COMOperationError("delete_table", "table_name 不能为空")
+        raise COMOperationError("delete_table", "table_name 涓嶈兘涓虹┖")
 
     tbl = sheet.ListObjects(table_name)
-    tbl.Unlist()  # 仅删除表格, 保留数据
+    tbl.Unlist()  # 浠呭垹闄よ〃鏍? 淇濈暀鏁版嵁
     return f"deleted_table: {table_name}"
 
 
-# ============ Data 数据操作 (9 个) ============
+# ============ Data 鏁版嵁鎿嶄綔 (9 涓? ============
 
 def _add_auto_filter(workbook: Any, op: dict) -> str:
-    """添加自动筛选.
+    """娣诲姞鑷姩绛涢€?
 
     Args:
-        sheet: 工作表名称
-        range: 数据范围 (留空使用 UsedRange)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鏁版嵁鑼冨洿 (鐣欑┖浣跨敤 UsedRange)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "")
@@ -2769,10 +2852,10 @@ def _add_auto_filter(workbook: Any, op: dict) -> str:
 
 
 def _remove_auto_filter(workbook: Any, op: dict) -> str:
-    """移除自动筛选.
+    """绉婚櫎鑷姩绛涢€?
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     if sheet.AutoFilterMode:
@@ -2781,13 +2864,13 @@ def _remove_auto_filter(workbook: Any, op: dict) -> str:
 
 
 def _sort_range(workbook: Any, op: dict) -> str:
-    """对范围内数据排序.
+    """瀵硅寖鍥村唴鏁版嵁鎺掑簭.
 
     Args:
-        sheet: 工作表名称
-        range: 数据范围
-        key_column: 排序列地址 (如 'A1') 或列号 (1-based)
-        ascending: True 升序 / False 降序
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鏁版嵁鑼冨洿
+        key_column: 鎺掑簭鍒楀湴鍧€ (濡?'A1') 鎴栧垪鍙?(1-based)
+        ascending: True 鍗囧簭 / False 闄嶅簭
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2796,7 +2879,7 @@ def _sort_range(workbook: Any, op: dict) -> str:
 
     rng = sheet.Range(range_str)
 
-    # 解析排序列
+    # 瑙ｆ瀽鎺掑簭鍒?
     if isinstance(key_column, int):
         key = rng.Columns(key_column)
     else:
@@ -2811,14 +2894,14 @@ def _sort_range(workbook: Any, op: dict) -> str:
 
 
 def _advanced_filter(workbook: Any, op: dict) -> str:
-    """高级筛选 (就地筛选或复制到目标位置).
+    """楂樼骇绛涢€?(灏卞湴绛涢€夋垨澶嶅埗鍒扮洰鏍囦綅缃?.
 
     Args:
-        sheet: 工作表名称
-        range: 数据范围
-        criteria_range: 条件范围
-        action: 'filter' 原地筛选 / 'copy' 复制
-        copy_to: 复制目标 (action='copy' 时必填)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鏁版嵁鑼冨洿
+        criteria_range: 鏉′欢鑼冨洿
+        action: 'filter' 鍘熷湴绛涢€?/ 'copy' 澶嶅埗
+        copy_to: 澶嶅埗鐩爣 (action='copy' 鏃跺繀濉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2827,13 +2910,13 @@ def _advanced_filter(workbook: Any, op: dict) -> str:
     copy_to = op.get("copy_to", "")
 
     if not criteria_range:
-        raise COMOperationError("advanced_filter", "criteria_range 不能为空")
+        raise COMOperationError("advanced_filter", "criteria_range 涓嶈兘涓虹┖")
 
     rng = sheet.Range(range_str)
     crit_rng = sheet.Range(criteria_range)
     if action == "copy":
         if not copy_to:
-            raise COMOperationError("advanced_filter", "copy_to 不能为空")
+            raise COMOperationError("advanced_filter", "copy_to 涓嶈兘涓虹┖")
         rng.AdvancedFilter(
             Action=2,  # xlFilterCopy
             CriteriaRange=crit_rng,
@@ -2846,18 +2929,18 @@ def _advanced_filter(workbook: Any, op: dict) -> str:
         )
     else:
         raise COMOperationError(
-            "advanced_filter", f"action 必须是 'filter' 或 'copy', 收到 '{action}'"
+            "advanced_filter", f"action 蹇呴』鏄?'filter' 鎴?'copy', 鏀跺埌 '{action}'"
         )
     return f"advanced_filter: {range_str} ({action})"
 
 
 def _remove_duplicates(workbook: Any, op: dict) -> str:
-    """删除重复行.
+    """鍒犻櫎閲嶅琛?
 
     Args:
-        sheet: 工作表名称
-        range: 数据范围
-        columns: 判定列 (1-based int 或 'A,B,C'), 默认所有列
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鏁版嵁鑼冨洿
+        columns: 鍒ゅ畾鍒?(1-based int 鎴?'A,B,C'), 榛樿鎵€鏈夊垪
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2875,7 +2958,7 @@ def _remove_duplicates(workbook: Any, op: dict) -> str:
                 if not c.isdigit():
                     raise COMOperationError(
                         "remove_duplicates",
-                        f"列号必须为正整数,收到 '{c}'",
+                        f"鍒楀彿蹇呴』涓烘鏁存暟,鏀跺埌 '{c}'",
                     )
                 cols.append(int(c))
         else:
@@ -2889,11 +2972,11 @@ def _remove_duplicates(workbook: Any, op: dict) -> str:
 
 
 def _group_rows(workbook: Any, op: dict) -> str:
-    """分级显示 (组合行).
+    """鍒嗙骇鏄剧ず (缁勫悎琛?.
 
     Args:
-        sheet: 工作表名称
-        range: 范围 (如 'A2:A5')
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿 (濡?'A2:A5')
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2902,11 +2985,11 @@ def _group_rows(workbook: Any, op: dict) -> str:
 
 
 def _ungroup_rows(workbook: Any, op: dict) -> str:
-    """取消行组合.
+    """鍙栨秷琛岀粍鍚?
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2915,11 +2998,11 @@ def _ungroup_rows(workbook: Any, op: dict) -> str:
 
 
 def _group_columns(workbook: Any, op: dict) -> str:
-    """分级显示 (组合列).
+    """鍒嗙骇鏄剧ず (缁勫悎鍒?.
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2928,11 +3011,11 @@ def _group_columns(workbook: Any, op: dict) -> str:
 
 
 def _ungroup_columns(workbook: Any, op: dict) -> str:
-    """取消列组合.
+    """鍙栨秷鍒楃粍鍚?
 
     Args:
-        sheet: 工作表名称
-        range: 范围
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        range: 鑼冨洿
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     range_str = op.get("range", "A1")
@@ -2940,15 +3023,15 @@ def _ungroup_columns(workbook: Any, op: dict) -> str:
     return f"ungrouped_columns: {range_str}"
 
 
-# ============ Protection 工作簿保护 (6 个) ============
+# ============ Protection 宸ヤ綔绨夸繚鎶?(6 涓? ============
 
 def _protect_workbook(workbook: Any, op: dict) -> str:
-    """保护工作簿 (结构保护).
+    """淇濇姢宸ヤ綔绨?(缁撴瀯淇濇姢).
 
     Args:
-        password: 密码
-        structure: 保护结构 (默认 True)
-        windows: 保护窗口 (默认 False)
+        password: 瀵嗙爜
+        structure: 淇濇姢缁撴瀯 (榛樿 True)
+        windows: 淇濇姢绐楀彛 (榛樿 False)
     """
     password = op.get("password", "")
     structure = op.get("structure", True)
@@ -2963,10 +3046,10 @@ def _protect_workbook(workbook: Any, op: dict) -> str:
 
 
 def _unprotect_workbook(workbook: Any, op: dict) -> str:
-    """撤销工作簿保护.
+    """鎾ら攢宸ヤ綔绨夸繚鎶?
 
     Args:
-        password: 密码
+        password: 瀵嗙爜
     """
     password = op.get("password", "")
     workbook.Unprotect(Password=password)
@@ -2974,42 +3057,42 @@ def _unprotect_workbook(workbook: Any, op: dict) -> str:
 
 
 def _set_open_password(workbook: Any, op: dict) -> str:
-    """设置打开密码 (下次 SaveAs 时真正加密).
+    """璁剧疆鎵撳紑瀵嗙爜 (涓嬫 SaveAs 鏃剁湡姝ｅ姞瀵?.
 
     Args:
-        password: 密码
+        password: 瀵嗙爜
 
-    注: Excel COM 中 Password 属性只在 SaveAs 时生效.
-        本函数仅设置属性, 不主动 SaveAs 以避免覆盖未保存的内容.
-        请在调用本函数后, 显式调用 close_document(save=True) 触发加密落盘.
+    娉? Excel COM 涓?Password 灞炴€у彧鍦?SaveAs 鏃剁敓鏁?
+        鏈嚱鏁颁粎璁剧疆灞炴€? 涓嶄富鍔?SaveAs 浠ラ伩鍏嶈鐩栨湭淇濆瓨鐨勫唴瀹?
+        璇峰湪璋冪敤鏈嚱鏁板悗, 鏄惧紡璋冪敤 close_document(save=True) 瑙﹀彂鍔犲瘑钀界洏.
     """
     password = op.get("password", "")
     if not password:
-        raise COMOperationError("set_open_password", "password 不能为空")
+        raise COMOperationError("set_open_password", "password 涓嶈兘涓虹┖")
     workbook.Password = password
-    return f"set_open_password: 长度 {len(password)} (将在 SaveAs 时生效)"
+    return f"set_open_password: 闀垮害 {len(password)} (灏嗗湪 SaveAs 鏃剁敓鏁?"
 
 
 def _set_write_reservation_password(workbook: Any, op: dict) -> str:
-    """设置写保护密码 (推荐只读).
+    """璁剧疆鍐欎繚鎶ゅ瘑鐮?(鎺ㄨ崘鍙).
 
     Args:
-        password: 密码
+        password: 瀵嗙爜
     """
     password = op.get("password", "")
     if not password:
-        raise COMOperationError("set_write_reservation_password", "password 不能为空")
+        raise COMOperationError("set_write_reservation_password", "password 涓嶈兘涓虹┖")
     workbook.WriteReservationPassword = password
-    return f"set_write_reservation_password: 长度 {len(password)}"
+    return f"set_write_reservation_password: 闀垮害 {len(password)}"
 
 
 def _mark_as_final(workbook: Any, op: dict) -> str:
-    """标记为最终状态 (Mark As Final).
+    """鏍囪涓烘渶缁堢姸鎬?(Mark As Final).
 
-    注: 通过自定义文档属性实现.
+    娉? 閫氳繃鑷畾涔夋枃妗ｅ睘鎬у疄鐜?
     """
     custom_props = workbook.CustomDocumentProperties
-    # 检查属性是否已存在
+    # 妫€鏌ュ睘鎬ф槸鍚﹀凡瀛樺湪
     prop = None
     try:
         for i in range(1, custom_props.Count + 1):
@@ -3020,10 +3103,10 @@ def _mark_as_final(workbook: Any, op: dict) -> str:
         pass
 
     if prop is not None:
-        # 已存在则更新
+        # 宸插瓨鍦ㄥ垯鏇存柊
         prop.Value = True
     else:
-        # 不存在则添加 (使用位置参数)
+        # 涓嶅瓨鍦ㄥ垯娣诲姞 (浣跨敤浣嶇疆鍙傛暟)
         custom_props.Add(
             "_MarkAsFinal",  # Name
             False,            # LinkToContent
@@ -3034,27 +3117,27 @@ def _mark_as_final(workbook: Any, op: dict) -> str:
 
 
 def _recommend_read_only(workbook: Any, op: dict) -> str:
-    """设置推荐只读 (ReadOnlyRecommended).
+    """璁剧疆鎺ㄨ崘鍙 (ReadOnlyRecommended).
 
     Args:
-        recommend: True 启用 / False 关闭
+        recommend: True 鍚敤 / False 鍏抽棴
     """
     recommend = op.get("recommend", True)
     workbook.ReadOnlyRecommended = recommend
     return f"recommend_read_only: {recommend}"
 
 
-# ============ Objects 对象操作 (5 个) ============
+# ============ Objects 瀵硅薄鎿嶄綔 (5 涓? ============
 
 def _add_image(workbook: Any, op: dict) -> str:
-    """插入图片.
+    """鎻掑叆鍥剧墖.
 
     Args:
-        sheet: 工作表名称
-        image_path: 图片文件路径
-        cell: 锚定单元格 (默认 A1)
-        width: 宽度 (磅, 可选)
-        height: 高度 (磅, 可选)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        image_path: 鍥剧墖鏂囦欢璺緞
+        cell: 閿氬畾鍗曞厓鏍?(榛樿 A1)
+        width: 瀹藉害 (纾? 鍙€?
+        height: 楂樺害 (纾? 鍙€?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     image_path = op.get("image_path", "")
@@ -3063,11 +3146,11 @@ def _add_image(workbook: Any, op: dict) -> str:
     height = op.get("height")
 
     if not image_path:
-        raise COMOperationError("add_image", "image_path 不能为空")
+        raise COMOperationError("add_image", "image_path 涓嶈兘涓虹┖")
 
     p = Path(image_path)
     if not p.exists():
-        raise COMOperationError("add_image", f"图片不存在: {image_path}")
+        raise COMOperationError("add_image", f"鍥剧墖涓嶅瓨鍦? {image_path}")
 
     img = sheet.Pictures().Insert(str(p))
     img.Left = sheet.Range(cell).Left
@@ -3080,10 +3163,10 @@ def _add_image(workbook: Any, op: dict) -> str:
 
 
 def _list_shapes(workbook: Any, op: dict) -> list[dict]:
-    """列出工作表所有形状 (图片/文本框/形状).
+    """鍒楀嚭宸ヤ綔琛ㄦ墍鏈夊舰鐘?(鍥剧墖/鏂囨湰妗?褰㈢姸).
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     shapes = []
@@ -3102,12 +3185,12 @@ def _list_shapes(workbook: Any, op: dict) -> list[dict]:
 
 
 def _delete_shape(workbook: Any, op: dict) -> str:
-    """删除形状.
+    """鍒犻櫎褰㈢姸.
 
     Args:
-        sheet: 工作表名称
-        index: 形状索引 (1-based)
-        name: 形状名称 (与 index 二选一)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        index: 褰㈢姸绱㈠紩 (1-based)
+        name: 褰㈢姸鍚嶇О (涓?index 浜岄€変竴)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     index = op.get("index")
@@ -3120,20 +3203,20 @@ def _delete_shape(workbook: Any, op: dict) -> str:
         sh = sheet.Shapes(name)
         sh_name = name
     else:
-        raise COMOperationError("delete_shape", "index 或 name 必填")
+        raise COMOperationError("delete_shape", "index 鎴?name 蹇呭～")
 
     sh.Delete()
     return f"deleted_shape: {sh_name}"
 
 
 def _add_comment(workbook: Any, op: dict) -> str:
-    """添加批注.
+    """娣诲姞鎵规敞.
 
     Args:
-        sheet: 工作表名称
-        cell: 单元格
-        text: 批注内容
-        author: 作者 (默认 'AI')
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        cell: 鍗曞厓鏍?
+        text: 鎵规敞鍐呭
+        author: 浣滆€?(榛樿 'AI')
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A1")
@@ -3141,7 +3224,7 @@ def _add_comment(workbook: Any, op: dict) -> str:
     author = op.get("author", "AI")
 
     if not text:
-        raise COMOperationError("add_comment", "text 不能为空")
+        raise COMOperationError("add_comment", "text 涓嶈兘涓虹┖")
 
     rng = sheet.Range(cell)
     if rng.Comment:
@@ -3155,11 +3238,11 @@ def _add_comment(workbook: Any, op: dict) -> str:
 
 
 def _delete_comment(workbook: Any, op: dict) -> str:
-    """删除批注.
+    """鍒犻櫎鎵规敞.
 
     Args:
-        sheet: 工作表名称
-        cell: 单元格
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        cell: 鍗曞厓鏍?
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     cell = op.get("cell", "A1")
@@ -3170,22 +3253,22 @@ def _delete_comment(workbook: Any, op: dict) -> str:
     return f"no_comment: {cell}"
 
 
-# ============ View 视图操作 (3 个) ============
+# ============ View 瑙嗗浘鎿嶄綔 (3 涓? ============
 
 def _set_view_zoom(workbook: Any, op: dict) -> str:
-    """设置视图缩放.
+    """璁剧疆瑙嗗浘缂╂斁.
 
     Args:
-        sheet: 工作表名称
-        zoom: 缩放比例 (10-400)
+        sheet: 宸ヤ綔琛ㄥ悕绉?
+        zoom: 缂╂斁姣斾緥 (10-400)
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
     zoom = op.get("zoom", 100)
     if not 10 <= zoom <= 400:
         raise COMOperationError(
-            "set_view_zoom", f"zoom 必须在 10-400 之间, 收到 {zoom}"
+            "set_view_zoom", f"zoom 蹇呴』鍦?10-400 涔嬮棿, 鏀跺埌 {zoom}"
         )
-    # 通过激活并设置 zoom
+    # 閫氳繃婵€娲诲苟璁剧疆 zoom
     sheet.Activate()
     active_window = _excel_require_active_window(workbook, "set_view_zoom")
     active_window.Zoom = zoom
@@ -3193,10 +3276,10 @@ def _set_view_zoom(workbook: Any, op: dict) -> str:
 
 
 def _set_view_gridlines(workbook: Any, op: dict) -> str:
-    """设置是否显示网格线.
+    """璁剧疆鏄惁鏄剧ず缃戞牸绾?
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
         show: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -3207,10 +3290,10 @@ def _set_view_gridlines(workbook: Any, op: dict) -> str:
 
 
 def _set_view_headings(workbook: Any, op: dict) -> str:
-    """设置是否显示行列标题.
+    """璁剧疆鏄惁鏄剧ず琛屽垪鏍囬.
 
     Args:
-        sheet: 工作表名称
+        sheet: 宸ヤ綔琛ㄥ悕绉?
         show: True/False
     """
     sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
@@ -3220,20 +3303,20 @@ def _set_view_headings(workbook: Any, op: dict) -> str:
     return f"set_view_headings: {show}"
 
 
-# ============ Calculation 计算操作 (3 个) ============
+# ============ Calculation 璁＄畻鎿嶄綔 (3 涓? ============
 
 def _recalculate(workbook: Any, op: dict) -> str:
-    """重新计算所有公式.
+    """閲嶆柊璁＄畻鎵€鏈夊叕寮?
 
     Args:
-        full: True 全量重算 / False 仅脏数据 (当前实现均全量)
+        full: True 鍏ㄩ噺閲嶇畻 / False 浠呰剰鏁版嵁 (褰撳墠瀹炵幇鍧囧叏閲?
     """
-    # 用 Application.Calculate() 而不是 workbook.Calculate()
-    # 避免某些环境下 workbook 被错误绑定
+    # 鐢?Application.Calculate() 鑰屼笉鏄?workbook.Calculate()
+    # 閬垮厤鏌愪簺鐜涓?workbook 琚敊璇粦瀹?
     full = op.get("full", True)
     app = workbook.Application
     if app is not None:
-        # 注: Excel COM 中 Calculate() 即为全量重算, 没有单独的"仅脏数据"公开 API
+        # 娉? Excel COM 涓?Calculate() 鍗充负鍏ㄩ噺閲嶇畻, 娌℃湁鍗曠嫭鐨?浠呰剰鏁版嵁"鍏紑 API
         app.Calculate()
     else:
         workbook.Calculate()
@@ -3241,7 +3324,7 @@ def _recalculate(workbook: Any, op: dict) -> str:
 
 
 def _set_calculation_mode(workbook: Any, op: dict) -> str:
-    """设置计算模式.
+    """璁剧疆璁＄畻妯″紡.
 
     Args:
         mode: 'auto' (1) / 'manual' (-4135) / 'semiauto' (2)
@@ -3253,18 +3336,18 @@ def _set_calculation_mode(workbook: Any, op: dict) -> str:
         "semiauto": 2,  # xlCalculationSemiautomatic
     }
     if mode not in mode_map:
-        raise COMOperationError("set_calculation_mode", f"mode 必须是 auto/manual/semiauto")
+        raise COMOperationError("set_calculation_mode", f"mode 蹇呴』鏄?auto/manual/semiauto")
     workbook.Application.Calculation = mode_map[mode]
     return f"set_calculation_mode: {mode}"
 
 
 def _set_iterative_calc(workbook: Any, op: dict) -> str:
-    """启用/配置迭代计算.
+    """鍚敤/閰嶇疆杩唬璁＄畻.
 
     Args:
         enable: True/False
-        max_iterations: 最大迭代次数 (1-32767, 默认 100)
-        max_change: 最大变化量 (>0, 默认 0.001)
+        max_iterations: 鏈€澶ц凯浠ｆ鏁?(1-32767, 榛樿 100)
+        max_change: 鏈€澶у彉鍖栭噺 (>0, 榛樿 0.001)
     """
     enable = op.get("enable", True)
     max_iter = op.get("max_iterations", 100)
@@ -3272,14 +3355,35 @@ def _set_iterative_calc(workbook: Any, op: dict) -> str:
     if not 1 <= int(max_iter) <= 32767:
         raise COMOperationError(
             "set_iterative_calc",
-            f"max_iterations 必须在 1-32767, 收到 {max_iter}",
+            f"max_iterations 蹇呴』鍦?1-32767, 鏀跺埌 {max_iter}",
         )
     if float(max_change) <= 0:
         raise COMOperationError(
-            "set_iterative_calc", f"max_change 必须 > 0, 收到 {max_change}"
+            "set_iterative_calc", f"max_change 蹇呴』 > 0, 鏀跺埌 {max_change}"
         )
     app = workbook.Application
     app.Iteration = enable
     app.MaxIterations = max_iter
     app.MaxChange = max_change
     return f"set_iterative_calc: enable={enable}, max_iter={max_iter}"
+
+
+def _goal_seek(workbook: Any, op: dict) -> str:
+    """Run Excel Goal Seek on a target cell."""
+    sheet = _get_sheet(workbook, op.get("sheet", "Sheet1"))
+    set_cell = op.get("set_cell", "")
+    changing_cell = op.get("changing_cell", "")
+    goal = op.get("goal")
+
+    if not set_cell or not changing_cell:
+        raise COMOperationError("goal_seek", "set_cell and changing_cell are required")
+    if goal is None:
+        raise COMOperationError("goal_seek", "goal is required")
+
+    try:
+        result = sheet.Range(set_cell).GoalSeek(Goal=goal, ChangingCell=sheet.Range(changing_cell))
+    except Exception as e:
+        raise COMOperationError("goal_seek", str(e))
+
+    return f"goal_seek: set_cell={set_cell}, changing_cell={changing_cell}, converged={bool(result)}"
+

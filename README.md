@@ -27,6 +27,39 @@ It supports two deployment shapes:
 - **Excel**: create workbooks, write and read ranges, format cells, build charts, manage tables, validation, filtering, names, formulas, pivot tables, and export to PDF
 - **PowerPoint**: create presentations, manage slides and layouts, edit shapes and text, apply themes, insert icons, media, tables, charts, control slideshow behavior, and export to PDF
 
+## Current State
+
+The current branch is aimed at being usable in real agent clients, not just impressive in a tool list.
+
+- **Excel hardening**: richer native support for pivot tables, slicers, data validation, worksheet protection, and Goal Seek
+- **Word hardening**: safer mail-merge lifecycle handling and tighter section deletion behavior
+- **PowerPoint hardening**: more reliable table merge/split recovery, plus advanced `apply_operations` coverage for charts, SmartArt, notes, hyperlinks, transitions, and table editing
+- **Client compatibility**: split Word / Excel / PowerPoint servers remain the recommended default because they expose tools more reliably across Codex, Claude Desktop, Cursor, Trae, and similar MCP clients
+
+Recent local validation on this repo:
+
+- `pytest -q`
+- result: `95 passed`
+
+## PowerPoint `apply_operations` Surface
+
+The public tool docstring shows only the most common presentation operations, but the real `ppt_apply_operations` surface is much broader. In practice it can drive:
+
+- charts: insert, set data, read data, format chart, format axes, adjust series, change chart type
+- SmartArt: insert, modify nodes, inspect layouts
+- notes: write notes, read notes, set extended note text
+- navigation and interactivity: hyperlinks, transitions, slideshow controls
+- shape and table workflows: formatting, grouping, borders, merge/split cells, row/column changes, export helpers
+
+If you are building serious presentation workflows, `ppt_apply_operations` is the preferred entrypoint over calling only the smaller top-level PPT tools.
+
+## Operational Notes
+
+- Prefer the **split servers** unless you have already verified that your MCP client handles a very large combined tool surface well.
+- A client showing only a few Office tools up front does **not** always mean the server lost tools. Some clients lazily inject MCP tools into the conversation and reveal more later.
+- Some Office COM behaviors remain **version-dependent**. In particular, advanced theme APIs, sections, animations, and certain chart/table features can behave differently across Office builds.
+- This repo is strongest when used against the real desktop apps with visible Office windows enabled during debugging.
+
 ## Quick Start
 
 ### Install from the repository

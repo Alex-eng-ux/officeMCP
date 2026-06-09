@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from office_mcp.core.errors import COMOperationError
-from office_mcp.core.office_manager import _open_powerpoint_presentation
+from office_mcp.core.office_manager import _open_powerpoint_presentation, office_manager
 from office_mcp.core.path_guard import validate_path
 from office_mcp.utils.icons import get_icon_url, search_icons
 
@@ -33,6 +33,32 @@ def _ppt_open_for_internal_flow(
         untitled=untitled,
         with_window=False,
     )
+
+
+def _ppt_normalize_live_path(path_value: str | Path) -> str:
+    """Normalize a PowerPoint file path for live-session comparisons."""
+    return str(Path(path_value).resolve()).lower()
+
+
+def _ppt_acquire_for_internal_flow(
+    app: Any,
+    file_path: str | Path,
+    *,
+    read_only: bool = False,
+    untitled: bool = False,
+) -> tuple[Any, bool]:
+    """Return a live presentation plus whether this helper owns the handle."""
+    normalized_target = _ppt_normalize_live_path(file_path)
+    try:
+        count = getattr(app.Presentations, "Count", 0)
+        for index in range(1, count + 1):
+            candidate = app.Presentations(index)
+            full_name = (getattr(candidate, "FullName", "") or "").strip()
+            if full_name and _ppt_normalize_live_path(full_name) == normalized_target:
+                return candidate, False
+    except Exception:
+        logger.debug("Could not scan live presentations before internal open", exc_info=True)
+    return _ppt_open_for_internal_flow(app, file_path, read_only=read_only, untitled=untitled), True
 
 
 def _ppt_close_quietly(presentation: Any) -> None:
@@ -225,6 +251,24 @@ def _ppt_delete_merge_metadata(shape: Any, row: int, col: int) -> None:
         delete(_ppt_tag_name(row, col))
     except Exception:  # noqa: BLE001
         pass
+
+
+def _ppt_find_merge_metadata(shape: Any, table: Any, row: int, col: int) -> tuple[int, int, dict[str, Any]] | None:
+    """Find merge metadata whose merged region contains the target cell."""
+    direct = _ppt_load_merge_metadata(shape, row, col)
+    if direct:
+        return row, col, direct
+
+    for anchor_row in range(1, table.Rows.Count + 1):
+        for anchor_col in range(1, table.Columns.Count + 1):
+            payload = _ppt_load_merge_metadata(shape, anchor_row, anchor_col)
+            if not payload:
+                continue
+            end_row = int(payload.get("end_row", anchor_row))
+            end_col = int(payload.get("end_col", anchor_col))
+            if anchor_row <= row <= end_row and anchor_col <= col <= end_col:
+                return anchor_row, anchor_col, payload
+    return None
 
 
 def _ppt_require_output(path_value: str, operation: str) -> Path:
@@ -1116,6 +1160,7 @@ def _create_from_template(app: Any, op: dict) -> str:
     """
     template_name = op.get("template_name", "")
     template_path = op.get("template_path", "")
+    output_path = op.get("output_path", "")
 
     if not template_path and template_name:
         # 安全：只取文件名部分，防止路径遍历
@@ -1138,8 +1183,20 @@ def _create_from_template(app: Any, op: dict) -> str:
     if not Path(template_path).exists():
         raise COMOperationError("create_from_template", f"模板文件不存在: {template_path}")
 
+    if output_path:
+        output_file = validate_path(output_path)
+    else:
+        template_file = Path(template_path)
+        output_file = validate_path(str(template_file.with_name(f"{template_file.stem}.from-template.pptx")))
+
     presentation = _ppt_open_for_internal_flow(app, template_path, untitled=True)
-    return f"created_from_template: {template_name or template_path}"
+    try:
+        presentation.SaveAs(str(output_file))
+        office_manager.track_document(output_file, presentation, app_type="ppt")
+        return f"created_from_template: {output_file}"
+    except Exception:
+        _ppt_close_quietly(presentation)
+        raise
 
 
 def _check_typography(presentation: Any, op: dict) -> dict:
@@ -1783,10 +1840,12 @@ def _compare_presentations(app: Any, op: dict) -> dict:
 
     pres1 = None
     pres2 = None
+    pres1_owned = False
+    pres2_owned = False
     try:
         # 打开两个演示文稿进行比较
-        pres1 = _ppt_open_for_internal_flow(app, pres1_path, read_only=True)
-        pres2 = _ppt_open_for_internal_flow(app, pres2_path, read_only=True)
+        pres1, pres1_owned = _ppt_acquire_for_internal_flow(app, pres1_path, read_only=True)
+        pres2, pres2_owned = _ppt_acquire_for_internal_flow(app, pres2_path, read_only=True)
 
         differences = []
 
@@ -1820,8 +1879,10 @@ def _compare_presentations(app: Any, op: dict) -> dict:
     except Exception as e:
         raise COMOperationError("compare_presentations", str(e))
     finally:
-        _ppt_close_quietly(pres2)
-        _ppt_close_quietly(pres1)
+        if pres2_owned:
+            _ppt_close_quietly(pres2)
+        if pres1_owned:
+            _ppt_close_quietly(pres1)
 
 
 def _merge_presentations(app: Any, op: dict) -> str:
@@ -1846,12 +1907,14 @@ def _merge_presentations(app: Any, op: dict) -> str:
 
     target_pres = None
     source_pres = None
+    target_owned = False
+    source_owned = False
     try:
         # 打开目标演示文稿
-        target_pres = _ppt_open_for_internal_flow(app, target_path)
+        target_pres, target_owned = _ppt_acquire_for_internal_flow(app, target_path)
 
         for source_path in source_paths:
-            source_pres = _ppt_open_for_internal_flow(app, source_path, read_only=True)
+            source_pres, source_owned = _ppt_acquire_for_internal_flow(app, source_path, read_only=True)
 
             # 计算插入位置
             if insert_position < 0 or insert_position > target_pres.Slides.Count:
@@ -1868,16 +1931,20 @@ def _merge_presentations(app: Any, op: dict) -> str:
             # 更新插入位置
             insert_position = target_pres.Slides.Count
 
-            _ppt_close_quietly(source_pres)
+            if source_owned:
+                _ppt_close_quietly(source_pres)
             source_pres = None
+            source_owned = False
 
         target_pres.Save()
         return f"merge_presentations: merged {len(source_paths)} presentations into {target_path}"
     except Exception as e:
         raise COMOperationError("merge_presentations", str(e))
     finally:
-        _ppt_close_quietly(source_pres)
-        _ppt_close_quietly(target_pres)
+        if source_owned:
+            _ppt_close_quietly(source_pres)
+        if target_owned:
+            _ppt_close_quietly(target_pres)
 
 
 # ============ Slides 类操作 (9 个新工具) ============
@@ -3575,7 +3642,12 @@ def _ppt_split_table_cells(presentation: Any, op: dict) -> str:
         raise COMOperationError("ppt_split_table_cells", "拆分单元格超出表格边界")
 
     # Phase 1: Snapshot pre-split state
-    metadata = _ppt_load_merge_metadata(shape, row, col)
+    metadata_match = _ppt_find_merge_metadata(shape, table, row, col)
+    metadata_anchor_row = row
+    metadata_anchor_col = col
+    metadata = None
+    if metadata_match:
+        metadata_anchor_row, metadata_anchor_col, metadata = metadata_match
     merged_text = _ppt_get_cell_text(table.Cell(row, col))
     pre_rows = table.Rows.Count
     pre_cols = table.Columns.Count
@@ -3609,8 +3681,8 @@ def _ppt_split_table_cells(presentation: Any, op: dict) -> str:
 
     if metadata:
         # We have stored metadata about the original pre-merge state
-        orig_end_row = int(metadata.get("end_row", row))
-        orig_end_col = int(metadata.get("end_col", col))
+        orig_end_row = int(metadata.get("end_row", metadata_anchor_row))
+        orig_end_col = int(metadata.get("end_col", metadata_anchor_col))
         texts = metadata.get("texts") or []
 
         # After split, the grid may have expanded. Calculate the actual region.
@@ -3619,8 +3691,8 @@ def _ppt_split_table_cells(presentation: Any, op: dict) -> str:
         actual_end_row = min(orig_end_row, post_rows)
         actual_end_col = min(orig_end_col, post_cols)
 
-        for row_offset, target_row in enumerate(range(row, actual_end_row + 1)):
-            for col_offset, target_col in enumerate(range(col, actual_end_col + 1)):
+        for row_offset, target_row in enumerate(range(metadata_anchor_row, actual_end_row + 1)):
+            for col_offset, target_col in enumerate(range(metadata_anchor_col, actual_end_col + 1)):
                 original_text = ""
                 if row_offset < len(texts) and col_offset < len(texts[row_offset]):
                     original_text = str(texts[row_offset][col_offset] or "")
@@ -3630,7 +3702,7 @@ def _ppt_split_table_cells(presentation: Any, op: dict) -> str:
                     # Cell may not exist if grid structure is unexpected
                     logger.debug("Could not restore text to cell (%d,%d) after split", target_row, target_col)
 
-        _ppt_delete_merge_metadata(shape, row, col)
+        _ppt_delete_merge_metadata(shape, metadata_anchor_row, metadata_anchor_col)
     else:
         # No metadata - distribute merged text to the first cell, clear others
         # After split, the cell at (row, col) should be the top-left of the split region

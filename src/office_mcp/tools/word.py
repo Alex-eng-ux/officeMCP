@@ -485,7 +485,7 @@ def register_word_tools(mcp: FastMCP) -> None:
                 "data_source": str(data_path),
                 "connection": connection,
                 "sql_statement": sql_statement,
-                "send_to_new_document": False,
+                "send_to_new_document": True,
             })
             return f"已执行邮件合并: {result}"
         except OfficeMCPError as e:

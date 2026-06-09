@@ -537,6 +537,7 @@ def register_ppt_tools(mcp: FastMCP) -> None:
     def ppt_create_from_template(
         template_name: str = "",
         template_path: str = "",
+        output_path: str = "",
     ) -> str:
         """从用户模板文件夹创建演示文稿.
 
@@ -546,12 +547,13 @@ def register_ppt_tools(mcp: FastMCP) -> None:
 
         """
         try:
-            app = office_manager._get_app("ppt")
+            app = office_manager.ensure_app("ppt")
             result = _create_from_template(app, {
                 "template_name": template_name,
                 "template_path": template_path,
+                "output_path": output_path,
             })
-            return f"已从模板创建: {template_name or template_path}"
+            return f"已从模板创建: {result}"
         except OfficeMCPError as e:
             return f"错误: {e}"
         except Exception as e:

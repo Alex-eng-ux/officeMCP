@@ -28,3 +28,5 @@ demo/
 demo_fix/
 deliverables/
 tmp/
+artifacts/
+uv.lock

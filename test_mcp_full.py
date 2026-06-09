@@ -81,8 +81,6 @@ EXPECTED_FAILURES = {
     "excel_change_chart_type",
     "excel_export_chart",
     "excel_delete_chart",
-    "excel_add_slicer",
-    "excel_create_pivot_table",
     "excel_add_subtotal",
     "excel_import_data",
     "excel_delete_worksheet",
@@ -299,6 +297,9 @@ async def test_tool(session: ClientSession, name: str, args: dict) -> str:
         return f"Error: {err}"
 
 
+test_tool.__test__ = False
+
+
 async def phase2_word_tests(session: ClientSession):
     """Test all word_ tools."""
     print("\n═══ Phase 2a: Word tools ═══")
@@ -489,11 +490,6 @@ async def phase2_excel_tests(session: ClientSession):
         "operator": "greaterthan", "formula1": "0"
     })
 
-    # ── Slicer ──
-    await test_tool(session, "excel_add_slicer", {
-        "file_path": fp, "target_sheet": sh, "pivot_sheet": sh, "field_name": "Name"
-    })
-
     # ── Subtotal ──
     await test_tool(session, "excel_add_subtotal", {
         "file_path": fp, "sheet": sh, "range": "A1:B3"
@@ -510,8 +506,24 @@ async def phase2_excel_tests(session: ClientSession):
         "file_path": fp, "name": "TestRange", "refers_to": "=Sheet1!$A$1:$B$3"
     })
 
-    # ── Pivot table ──
-    await test_tool(session, "excel_create_pivot_table", {"file_path": fp})
+    # ── Pivot table / Slicer ──
+    await test_tool(session, "excel_create_pivot_table", {
+        "file_path": fp,
+        "source_sheet": sh,
+        "source_range": "",
+        "target_sheet": "Pivot",
+        "target_cell": "A3",
+        "row_fields": ["Name"],
+        "data_fields": {"Score": "average"},
+        "pivot_name": "PivotScores",
+    })
+    await test_tool(session, "excel_add_slicer", {
+        "file_path": fp,
+        "target_sheet": "Pivot",
+        "pivot_sheet": "Pivot",
+        "pivot_name": "PivotScores",
+        "field_name": "Name",
+    })
 
     # ── Import/Export data ──
     await test_tool(session, "excel_import_data", {"file_path": fp, "csv_file": "nonexistent.csv"})

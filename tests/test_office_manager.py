@@ -133,7 +133,7 @@ def test_ensure_document_activates_live_document_when_requested(
     assert fake_doc.ActiveSheet.activated is True
 
 
-def test_close_document_keeps_tracking_when_close_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_close_document_raises_and_keeps_tracking_when_close_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = OfficeManager()
     doc_path = tmp_path / "draft.docx"
     path_key = str(doc_path.resolve())
@@ -152,11 +152,45 @@ def test_close_document_keeps_tracking_when_close_fails(tmp_path: Path, monkeypa
     manager._doc_types[path_key] = "word"
 
     monkeypatch.setattr(manager, "_retry_on_modal", lambda func, *args, **kwargs: func(*args))
+    monkeypatch.setattr(manager, "get_document", lambda file_path, require_active=False: fake_doc)
 
-    manager.close_document(doc_path, save=True)
+    with pytest.raises(COMOperationError, match="still open"):
+        manager.close_document(doc_path, save=True)
 
     assert manager._documents[path_key] is fake_doc
     assert manager._doc_types[path_key] == "word"
+
+
+def test_close_document_rebinds_stale_excel_handle_before_close(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = OfficeManager()
+    doc_path = tmp_path / "draft.xlsx"
+    path_key = str(doc_path.resolve())
+    calls: list[str] = []
+
+    class StaleDoc:
+        pass
+
+    class LiveDoc:
+        Path = str(tmp_path)
+        Saved = True
+
+        def Save(self) -> None:  # noqa: N802
+            calls.append("save")
+
+        def Close(self, SaveChanges=False) -> None:  # noqa: N802, ANN001
+            calls.append(f"close:{SaveChanges}")
+
+    manager._documents[path_key] = StaleDoc()
+    manager._doc_types[path_key] = "excel"
+
+    live_doc = LiveDoc()
+    monkeypatch.setattr(manager, "get_document", lambda file_path, require_active=False: live_doc)
+    monkeypatch.setattr(manager, "_retry_on_modal", lambda func, *args, **kwargs: func(*args))
+
+    manager.close_document(doc_path, save=True)
+
+    assert calls == ["save", "close:False"]
+    assert path_key not in manager._documents
 
 
 def test_track_document_adopts_existing_handle(tmp_path: Path) -> None:

@@ -1,5 +1,6 @@
 ﻿"""Word COM 操作实现."""
 
+import contextlib
 import logging
 import os
 import tempfile
@@ -1192,40 +1193,80 @@ def _update_fields(doc: Any, op: dict) -> str:
         raise COMOperationError("update_fields", str(e))
 
 
+def _word_doc_identity(candidate: Any, ordinal: int) -> str:
+    """Return a best-effort stable document key across COM wrapper rebinds."""
+    full_name = (getattr(candidate, "FullName", "") or "").strip()
+    if full_name:
+        with contextlib.suppress(Exception):
+            return str(Path(full_name).resolve()).lower()
+        return full_name.lower()
+    name = (getattr(candidate, "Name", "") or "").strip().lower()
+    if name:
+        return f"unsaved::{name}"
+    return f"unsaved-ordinal::{ordinal}"
+
+
+def _word_iter_documents(app: Any) -> list[Any]:
+    """Return the live Word documents collection as a list."""
+    count = getattr(app.Documents, "Count", 0)
+    return [app.Documents.Item(i) for i in range(1, count + 1)]
+
+
+def _word_snapshot_documents(app: Any) -> list[tuple[str, Any]]:
+    """Snapshot live documents with comparison keys."""
+    snapshot: list[tuple[str, Any]] = []
+    for ordinal, candidate in enumerate(_word_iter_documents(app), start=1):
+        snapshot.append((_word_doc_identity(candidate, ordinal), candidate))
+    return snapshot
+
+
+def _word_output_exists(output_file: Path) -> bool:
+    try:
+        return output_file.exists() and output_file.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _word_default_merge_output_path(doc: Any) -> Path:
+    """Build a deterministic output path for merge-to-new-document flows."""
+    template_full_name = (getattr(doc, "FullName", "") or "").strip()
+    if template_full_name:
+        template_path = Path(template_full_name)
+        base_dir = template_path.parent
+        stem = template_path.stem
+    else:
+        base_dir = Path(tempfile.gettempdir())
+        stem = (getattr(doc, "Name", "") or "mail-merge").replace(" ", "_")
+    return base_dir / f"{stem}.mail-merge-output.docx"
+
+
 def _mail_merge(doc: Any, op: dict) -> str:
-    """执行邮件合并.
-
-    注意: 邮件合并需要数据源文件 (Excel/CSV 等)
-
-    Args:
-        doc: Word Document 对象
-        op: 操作配置
-            - data_source: 数据源文件路径
-            - connection: ODBC 连接字符串 (可选)
-            - sql_statement: SQL 查询语句 (可选)
-            - output_path: 输出到新文档的路径 (可选，不提供则合并到当前)
-    """
+    """Execute a Word mail merge."""
     data_source = op.get("data_source", "")
     connection = op.get("connection", "").strip()
     sql_statement = op.get("sql_statement", "").strip()
-    output_path = op.get("output_path", "").strip()
-    send_to_new_document = bool(op.get("send_to_new_document", False) or output_path)
+    raw_output_path = op.get("output_path", "").strip()
+    send_to_new_document = bool(op.get("send_to_new_document", False) or raw_output_path)
+    output_file = Path(raw_output_path) if raw_output_path else None
 
     if not data_source:
-        raise COMOperationError("mail_merge", "data_source 不能为空")
+        raise COMOperationError("mail_merge", "data_source is required")
 
-    # 安全校验：禁止危险 SQL 关键字
     if sql_statement:
         dangerous = {"DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "EXEC", "TRUNCATE"}
         upper_sql = sql_statement.upper()
         if any(kw in upper_sql for kw in dangerous):
-            raise COMOperationError("mail_merge", "sql_statement 仅允许 SELECT 查询")
+            raise COMOperationError("mail_merge", "sql_statement only allows SELECT queries")
+
+    if send_to_new_document and output_file is None:
+        output_file = _word_default_merge_output_path(doc)
 
     app = None
     previous_alerts = None
     previous_screen_updating = None
     previous_confirm_conversions = None
     merged_doc = None
+    merged_doc_saved = False
 
     try:
         app = doc.Application
@@ -1242,103 +1283,85 @@ def _mail_merge(doc: Any, op: dict) -> str:
         if previous_confirm_conversions is not None:
             options.ConfirmConversions = False
 
-        # ── Phase 1: Snapshot pre-merge state ──
-        template_full_name = getattr(doc, "FullName", "")
-        template_name = getattr(doc, "Name", "")
-        pre_merge_doc_count = getattr(app.Documents, "Count", 0)
-        pre_merge_doc_names = set()
-        try:
-            for i in range(1, pre_merge_doc_count + 1):
-                d = app.Documents.Item(i)
-                pre_merge_doc_names.add(getattr(d, "FullName", ""))
-        except Exception:
-            logger.warning("Phase 1: could not enumerate pre-merge documents, falling back to count-only detection")
-        logger.info("Phase 1 complete: template=%s, pre_merge_doc_count=%d", template_full_name, pre_merge_doc_count)
+        pre_merge_docs: list[tuple[str, Any]] = []
+        pre_merge_doc_ids: set[str] = set()
+        with contextlib.suppress(Exception):
+            pre_merge_docs = _word_snapshot_documents(app)
+            pre_merge_doc_ids = {doc_key for doc_key, _candidate in pre_merge_docs}
+        logger.info(
+            "Phase 1 complete: template=%s, pre_merge_doc_count=%d",
+            getattr(doc, "FullName", ""),
+            len(pre_merge_docs),
+        )
 
-        # ── Phase 2: Bind data source ──
         mail_merge = doc.MailMerge
         open_data_source_kwargs = _build_mail_merge_open_kwargs(data_source, connection, sql_statement)
-
-        if send_to_new_document and hasattr(mail_merge, "Destination"):
-            mail_merge.Destination = 0  # wdSendToNewDocument
+        if hasattr(mail_merge, "Destination"):
+            mail_merge.Destination = 0 if send_to_new_document else 1
 
         logger.info("Phase 2: binding data source: %s", open_data_source_kwargs.get("Name"))
         _retry_word_mail_merge_call("OpenDataSource", mail_merge.OpenDataSource, **open_data_source_kwargs)
         logger.info("Phase 2 complete: data source bound")
 
-        # ── Phase 3: Execute merge ──
         logger.info("Phase 3: executing mail merge")
         try:
             _retry_word_mail_merge_call("Execute", mail_merge.Execute, Pause=False)
         except Exception as exec_err:
             logger.error("Phase 3: Execute failed: %s", exec_err)
-            try:
-                post_fail_count = getattr(app.Documents, "Count", 0)
-                if post_fail_count > pre_merge_doc_count:
-                    for i in range(1, post_fail_count + 1):
-                        d = app.Documents.Item(i)
-                        d_full = getattr(d, "FullName", "")
-                        if d_full not in pre_merge_doc_names and d_full != template_full_name:
-                            logger.info("Phase 3 error recovery: closing new document %s without saving", d_full)
-                            d.Close(SaveChanges=False)
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                for doc_key, candidate in _word_snapshot_documents(app):
+                    if doc_key not in pre_merge_doc_ids and candidate is not doc:
+                        candidate.Close(SaveChanges=False)
             raise
 
-        # Identify the result document
-        # Strategy 1: ActiveDocument differs from template
         active_doc = _retry_word_mail_merge_call("ActiveDocument", getattr, app, "ActiveDocument", None)
-        if active_doc is not None:
-            active_full_name = getattr(active_doc, "FullName", "")
-            if active_doc is not doc and active_full_name != template_full_name:
-                merged_doc = active_doc
-                logger.info("Phase 3: identified result via ActiveDocument: %s", active_full_name)
+        active_doc_key = _word_doc_identity(active_doc, -1) if active_doc is not None else ""
+        if active_doc is not None and active_doc is not doc and active_doc_key not in pre_merge_doc_ids:
+            merged_doc = active_doc
+            logger.info("Phase 3: identified result via ActiveDocument")
 
-        # Strategy 2: enumerate Documents and find the new one
         if merged_doc is None:
             try:
-                post_merge_count = getattr(app.Documents, "Count", 0)
-                for i in range(1, post_merge_count + 1):
-                    d = app.Documents.Item(i)
-                    d_full = getattr(d, "FullName", "")
-                    if d_full not in pre_merge_doc_names and d_full != template_full_name:
-                        merged_doc = d
-                        logger.info("Phase 3: identified result via enumeration: %s", d_full)
+                for doc_key, candidate in _word_snapshot_documents(app):
+                    if candidate is doc:
+                        continue
+                    if doc_key not in pre_merge_doc_ids:
+                        merged_doc = candidate
+                        logger.info("Phase 3: identified result via enumeration")
                         break
             except Exception as enum_err:
                 logger.warning("Phase 3: document enumeration failed: %s", enum_err)
 
-        # Strategy 3: last resort — only template remains, merge may have failed
+        if merged_doc is None and not send_to_new_document:
+            logger.info("Phase 3: merge stayed on template document")
+            return f"mail_merge_executed: {data_source}"
+
         if merged_doc is None:
-            logger.error("Phase 3: could not identify a result document; template=%s", template_full_name)
             raise COMOperationError("mail_merge", "mail merge did not produce a result document")
 
         logger.info("Phase 3 complete: result document identified")
 
-        # ── Phase 4: Save result ──
-        if output_path:
-            output_file = Path(output_path)
+        if output_file is not None:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             try:
                 _retry_word_mail_merge_call("SaveAs", merged_doc.SaveAs, str(output_file))
-                logger.info("Phase 4: saved result to %s", output_file)
+                if not _word_output_exists(output_file):
+                    raise COMOperationError("mail_merge", f"merged output was not created: {output_file}")
                 office_manager.track_document(output_file, merged_doc, app_type="word")
+                merged_doc_saved = True
+                logger.info("Phase 4: saved result to %s", output_file)
             except Exception as save_err:
                 logger.error("Phase 4: SaveAs failed: %s", save_err)
-                try:
-                    _retry_word_mail_merge_call("CloseMergedDocument", merged_doc.Close, SaveChanges=False)
-                except Exception:
-                    pass
-                merged_doc = None
-                raise
-            return f"mail_merge_executed_to_file: {output_file}"
-
-        if send_to_new_document:
-            merged_full_name = (getattr(merged_doc, "FullName", "") or "").strip()
-            if merged_full_name:
                 with contextlib.suppress(Exception):
-                    office_manager.track_document(Path(merged_full_name), merged_doc, app_type="word")
-            return f"mail_merge_executed_to_new_document: {data_source}"
+                    _retry_word_mail_merge_call("CloseMergedDocument", merged_doc.Close, SaveChanges=False)
+                merged_doc = None
+                if isinstance(save_err, COMOperationError):
+                    raise
+                raise COMOperationError("mail_merge", str(save_err)) from save_err
+
+            if send_to_new_document:
+                return f"mail_merge_executed_to_new_document: {output_file}"
+            return f"mail_merge_executed_to_file: {output_file}"
 
         return f"mail_merge_executed: {data_source}"
     except COMOperationError:
@@ -1346,6 +1369,9 @@ def _mail_merge(doc: Any, op: dict) -> str:
     except Exception as e:
         raise COMOperationError("mail_merge", str(e)) from e
     finally:
+        with contextlib.suppress(Exception):
+            if send_to_new_document and merged_doc_saved:
+                doc.Saved = True
         try:
             if app is not None and previous_alerts is not None:
                 app.DisplayAlerts = previous_alerts
@@ -2471,6 +2497,7 @@ def _delete_section(doc: Any, op: dict) -> str:
     """
     section_num = op.get("section", 1)
     try:
+        before_count = doc.Sections.Count
         if section_num < 1 or section_num > doc.Sections.Count:
             raise COMOperationError(
                 "delete_section",
@@ -2489,6 +2516,12 @@ def _delete_section(doc: Any, op: dict) -> str:
             raise COMOperationError("delete_section", f"无法定位分节符: section={section_num}")
 
         doc.Range(break_start, break_start + 1).Delete()
+        after_count = doc.Sections.Count
+        if after_count >= before_count:
+            raise COMOperationError(
+                "delete_section",
+                f"删除分节符后分节数量未减少: before={before_count}, after={after_count}",
+            )
         return f"deleted_section: {section_num}"
     except COMOperationError:
         raise

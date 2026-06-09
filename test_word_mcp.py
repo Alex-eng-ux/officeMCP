@@ -107,6 +107,9 @@ async def test_tool(session: ClientSession, name: str, args: dict, timeout: floa
         return f"Error: {err}"
 
 
+test_tool.__test__ = False
+
+
 async def main() -> None:
     start_time = time.time()
 

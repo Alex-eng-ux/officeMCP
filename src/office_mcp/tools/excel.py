@@ -40,6 +40,7 @@ from office_mcp.operations.excel_ops import (
     _export_chart,
     _export_data,
     _find_formula_cells,
+    _goal_seek,
     _get_chart_info,
     _get_formula_info,
     _get_worksheet_info,
@@ -227,6 +228,15 @@ def register_excel_tools(mcp: FastMCP) -> None:
         formula1: str = "",
         operator: str = "",
         formula2: str = "",
+        ignore_blank: bool = True,
+        in_cell_dropdown: bool = True,
+        show_input: bool = True,
+        input_title: str = "",
+        input_message: str = "",
+        show_error: bool = True,
+        error_title: str = "",
+        error_message: str = "",
+        error_style: str = "stop",
     ) -> str:
         """添加数据验证.
 
@@ -249,6 +259,15 @@ def register_excel_tools(mcp: FastMCP) -> None:
                     "formula1": formula1,
                     "operator": operator,
                     "formula2": formula2,
+                    "ignore_blank": ignore_blank,
+                    "in_cell_dropdown": in_cell_dropdown,
+                    "show_input": show_input,
+                    "input_title": input_title,
+                    "input_message": input_message,
+                    "show_error": show_error,
+                    "error_title": error_title,
+                    "error_message": error_message,
+                    "error_style": error_style,
                 },
             )
             return f"已添加数据验证: {range}"
@@ -442,12 +461,15 @@ def register_excel_tools(mcp: FastMCP) -> None:
     def excel_create_pivot_table(
         file_path: str,
         source_sheet: str = "Sheet1",
-        source_range: str = "A1:D100",
+        source_range: str = "",
         target_sheet: str = "数据透视表",
         target_cell: str = "A3",
         row_fields: list[str] | None = None,
         column_fields: list[str] | None = None,
+        filter_fields: list[str] | None = None,
         data_fields: dict[str, str] | None = None,
+        pivot_name: str = "",
+        style_name: str = "",
     ) -> str:
         """创建 Excel 数据透视表.
 
@@ -472,7 +494,10 @@ def register_excel_tools(mcp: FastMCP) -> None:
                 "target_cell": target_cell,
                 "row_fields": row_fields or [],
                 "column_fields": column_fields or [],
+                "filter_fields": filter_fields or [],
                 "data_fields": data_fields or {},
+                "pivot_name": pivot_name,
+                "style_name": style_name,
             })
             return f"已创建数据透视表: {result}"
         except OfficeMCPError as e:
@@ -692,7 +717,23 @@ def register_excel_tools(mcp: FastMCP) -> None:
             return f"错误: {e}"
 
     @mcp.tool()
-    def excel_protect_worksheet(file_path: str, sheet: str, password: str = "") -> str:
+    def excel_protect_worksheet(
+        file_path: str,
+        sheet: str,
+        password: str = "",
+        user_interface_only: bool = False,
+        allow_formatting_cells: bool = False,
+        allow_formatting_columns: bool = False,
+        allow_formatting_rows: bool = False,
+        allow_inserting_columns: bool = False,
+        allow_inserting_rows: bool = False,
+        allow_inserting_hyperlinks: bool = False,
+        allow_deleting_columns: bool = False,
+        allow_deleting_rows: bool = False,
+        allow_sorting: bool = False,
+        allow_filtering: bool = False,
+        allow_using_pivot_tables: bool = False,
+    ) -> str:
         """保护工作表.
 
         Args:
@@ -703,7 +744,22 @@ def register_excel_tools(mcp: FastMCP) -> None:
         try:
             path = validate_path(file_path)
             wb = office_manager.ensure_document(path, activate=True)
-            result = _protect_worksheet(wb, {"sheet": sheet, "password": password})
+            result = _protect_worksheet(wb, {
+                "sheet": sheet,
+                "password": password,
+                "user_interface_only": user_interface_only,
+                "allow_formatting_cells": allow_formatting_cells,
+                "allow_formatting_columns": allow_formatting_columns,
+                "allow_formatting_rows": allow_formatting_rows,
+                "allow_inserting_columns": allow_inserting_columns,
+                "allow_inserting_rows": allow_inserting_rows,
+                "allow_inserting_hyperlinks": allow_inserting_hyperlinks,
+                "allow_deleting_columns": allow_deleting_columns,
+                "allow_deleting_rows": allow_deleting_rows,
+                "allow_sorting": allow_sorting,
+                "allow_filtering": allow_filtering,
+                "allow_using_pivot_tables": allow_using_pivot_tables,
+            })
             return f"已保护工作表: {sheet}"
         except OfficeMCPError as e:
             return f"错误: {e}"
@@ -2394,6 +2450,28 @@ def register_excel_tools(mcp: FastMCP) -> None:
                 "enable": enable,
                 "max_iterations": max_iterations,
                 "max_change": max_change,
+            })
+            return result
+        except OfficeMCPError as e:
+            return f"错误: {e}"
+
+    @mcp.tool()
+    def excel_goal_seek(
+        file_path: str,
+        sheet: str,
+        set_cell: str,
+        goal: float,
+        changing_cell: str,
+    ) -> str:
+        """Run native Excel Goal Seek."""
+        try:
+            path = validate_path(file_path)
+            wb = office_manager.ensure_document(path, activate=False)
+            result = _goal_seek(wb, {
+                "sheet": sheet,
+                "set_cell": set_cell,
+                "goal": goal,
+                "changing_cell": changing_cell,
             })
             return result
         except OfficeMCPError as e:

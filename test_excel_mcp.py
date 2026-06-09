@@ -36,8 +36,6 @@ EXPECTED_FAILURES = {
     "excel_add_data_validation",
     "excel_add_chart_series",
     # Known unsupported or flaky workflow coverage.
-    "excel_add_slicer",
-    "excel_create_pivot_table",
     "excel_add_subtotal",
     "excel_import_data",
     # Operations skipped later because they can trigger blocking COM dialogs.
@@ -111,6 +109,9 @@ async def test_tool(session: ClientSession, name: str, args: dict, timeout: floa
         return f"Error: {err}"
 
 
+test_tool.__test__ = False
+
+
 async def main():
     start_time = time.time()
 
@@ -161,7 +162,7 @@ async def main():
             print("\nPhase 3: Export")
             await test_tool(session, "excel_export_pdf", {"file_path": fp, "output_path": EXCEL_PDF_FILE})
 
-            print("\nPhase 4: Data validation / Conditional format / Slicer / Subtotal")
+            print("\nPhase 4: Data validation / Conditional format / Pivot / Slicer / Subtotal")
             await test_tool(session, "excel_add_data_validation", {
                 "file_path": fp, "sheet": sh, "range": "C1:C10", "validation_type": "list", "formula1": "a,b,c"
             })
@@ -169,8 +170,22 @@ async def main():
                 "file_path": fp, "sheet": sh, "range": "C1:C10", "condition_type": "cell_value",
                 "operator": "greater", "formula1": "0"
             })
+            await test_tool(session, "excel_create_pivot_table", {
+                "file_path": fp,
+                "source_sheet": sh,
+                "source_range": "",
+                "target_sheet": "Pivot",
+                "target_cell": "A3",
+                "row_fields": ["Name"],
+                "data_fields": {"Score": "average"},
+                "pivot_name": "PivotScores",
+            })
             await test_tool(session, "excel_add_slicer", {
-                "file_path": fp, "target_sheet": sh, "pivot_sheet": sh, "field_name": "Name"
+                "file_path": fp,
+                "target_sheet": "Pivot",
+                "pivot_sheet": "Pivot",
+                "pivot_name": "PivotScores",
+                "field_name": "Name",
             })
             await test_tool(session, "excel_add_subtotal", {
                 "file_path": fp, "sheet": sh, "range": "A1:B3"
@@ -183,8 +198,7 @@ async def main():
                 "file_path": fp, "name": "TestRange", "refers_to": "=Sheet1!$A$1:$B$3"
             })
 
-            print("\nPhase 6: Pivot / Import / Export")
-            await test_tool(session, "excel_create_pivot_table", {"file_path": fp})
+            print("\nPhase 6: Import / Export")
             await test_tool(session, "excel_import_data", {"file_path": fp, "csv_file": "nonexistent.csv"})
             await test_tool(session, "excel_export_data", {"file_path": fp, "sheet": sh, "export_path": EXCEL_EXPORT_FILE})
 

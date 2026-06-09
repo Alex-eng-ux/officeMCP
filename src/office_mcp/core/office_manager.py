@@ -509,6 +509,10 @@ class OfficeManager:
             self._active_file = file_path
         return doc
 
+    def ensure_app(self, app_type: str) -> Any:
+        """Return a healthy Office app handle for app-scoped helper flows."""
+        return self._get_app(app_type)
+
     def _activate_document(self, file_path: Path, doc: Any) -> None:
         """Best-effort activation for window-sensitive Office operations."""
         app_type = self._get_app_type_by_path(file_path)
@@ -560,9 +564,9 @@ class OfficeManager:
     def close_document(self, file_path: Path, save: bool = True) -> None:
         """Close a tracked document with phased save→probe→close approach."""
         path_key = _normalize_path_key(file_path)
-        doc = self._documents.get(path_key)
-        if doc is None:
+        if path_key not in self._documents:
             raise DocumentNotOpenError(path_key)
+        doc = self.get_document(file_path, require_active=False)
 
         app_type = self._doc_types.get(path_key)
         save_succeeded = False
@@ -631,8 +635,8 @@ class OfficeManager:
             logger.info("Closed Office file: %s", path_key)
         except Exception as close_error:  # noqa: BLE001
             if save_succeeded:
-                # Save already succeeded; close failure is non-critical
                 logger.warning("Close failed after successful save for %s: %s", path_key, close_error)
+                raise COMOperationError("close_document", str(close_error)) from close_error
             else:
                 # Save failed; try closing with SaveChanges=True as fallback
                 logger.warning("Close failed (save also failed) for %s: %s — retrying with SaveChanges=True", path_key, close_error)
@@ -647,6 +651,7 @@ class OfficeManager:
                     logger.info("Closed Office file with SaveChanges=True fallback: %s", path_key)
                 except Exception as fallback_close_error:  # noqa: BLE001
                     logger.warning("Fallback close also failed for %s: %s", path_key, fallback_close_error)
+                    raise COMOperationError("close_document", str(fallback_close_error)) from fallback_close_error
         finally:
             if close_succeeded:
                 self._forget_document(file_path)
