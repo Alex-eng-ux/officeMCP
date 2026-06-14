@@ -57,6 +57,7 @@ If you are building serious presentation workflows, `ppt_apply_operations` is th
 
 - Prefer the **split servers** unless you have already verified that your MCP client handles a very large combined tool surface well.
 - A client showing only a few Office tools up front does **not** always mean the server lost tools. Some clients lazily inject MCP tools into the conversation and reveal more later.
+- In clients that support client-side tool discovery such as `tool_search`, use it when a needed Office tool is not visible yet. In practice this often surfaces additional `word_*`, `excel_*`, or `ppt_*` tools that the server is already exposing but the client has not injected into the conversation up front.
 - Some Office COM behaviors remain **version-dependent**. In particular, advanced theme APIs, sections, animations, and certain chart/table features can behave differently across Office builds.
 - This repo is strongest when used against the real desktop apps with visible Office windows enabled during debugging.
 
@@ -241,6 +242,13 @@ If your MCP client handles large tool surfaces well, the combined server is stil
 
 Important: on some MCP clients, especially agent clients that lazily inject tools into a fresh conversation, a small visible subset does not necessarily mean the server actually lost tools. The Office MCP server may still be exposing the full Word, Excel, and PowerPoint surface, while the client only injects a smaller subset up front and discovers the rest later. In Codex-style clients, this often shows up as "only a few Office tools are visible at first" even though the remaining tools can still be surfaced through client-side discovery such as `tool_search`.
 
+If your client supports a discovery helper like `tool_search`, treat it as the first recovery step before assuming the Office MCP server is misconfigured. A practical pattern in Codex-style clients is:
+
+1. use the split Word / Excel / PowerPoint servers
+2. restart the client after MCP config changes
+3. if only a small subset of tools is visible, search for the missing capability by tool name or prefix, for example `ppt_`, `word_`, or `excel_`
+4. only after that, debug installation or server startup issues
+
 Python module entry point:
 
 ```json
@@ -299,6 +307,7 @@ This repository is designed to work across different MCP-capable agent clients, 
 - Some clients handle large MCP namespaces well and can use the combined `office-mcp` entrypoint.
 - Some clients degrade when a single MCP server exposes a very large tool surface with long descriptions and schemas.
 - Some clients also lazily inject only part of that surface into a new conversation. In that case, the missing tools may still exist server-side and can often be discovered later by the client.
+- In clients with discovery helpers such as `tool_search`, users should search for missing Office capabilities before assuming the server dropped them. This is especially relevant for large PowerPoint tool surfaces.
 - If you observe missing tools in the client UI or only a tiny subset of Office tools appearing, use the split entrypoints:
   - `office_mcp.server_word`
   - `office_mcp.server_excel`
